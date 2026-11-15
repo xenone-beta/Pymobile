@@ -156,7 +156,6 @@ fun CodeEditor(
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     visualTransformation = transformation,
                     onTextLayout = { layout = it },
-                    softWrap = false,
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.None,
                         autoCorrectEnabled = false,
