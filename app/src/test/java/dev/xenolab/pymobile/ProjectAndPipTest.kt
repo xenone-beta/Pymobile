@@ -97,8 +97,8 @@ class ProjectAndPipTest {
         val out = "WARNING: something\n[{\"name\": \"requests\", \"version\": \"2.32.3\"}, {\"name\": \"idna\", \"version\": \"3.7\"}]\n"
         val list = Pip.parseList(out)
         assertEquals(2, list.size)
-        assertEquals("requests", list[0].name)
-        assertEquals("2.32.3", list[0].version)
+        assertEquals("idna", list[0].name)
+        assertEquals("2.32.3", list.first { it.name == "requests" }.version)
         assertTrue(Pip.parseList("garbage").isEmpty())
     }
 

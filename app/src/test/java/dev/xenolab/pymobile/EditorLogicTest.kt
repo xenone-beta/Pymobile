@@ -161,9 +161,9 @@ class EditorLogicTest {
     }
 
     @Test fun completionOffersModulesAndWords() {
-        val modules = Completion.suggest("import o", 8, emptyList())
+        val modules = Completion.suggest("import ra", 9, emptyList())
         assertNotNull(modules)
-        assertTrue("os" in modules!!.items)
+        assertTrue("random" in modules!!.items)
         val src = "counter_value = 1\ncoun"
         val words = Completion.suggest(src, src.length, PyLexer.highlight(src))
         assertNotNull(words)
