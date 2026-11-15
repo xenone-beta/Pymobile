@@ -118,6 +118,7 @@ fun CodeEditor(
     BoxWithConstraints(modifier.background(MaterialTheme.colorScheme.surface)) {
         val viewportH = with(density) { maxHeight.toPx() }
         val viewportW = with(density) { maxWidth.toPx() }
+        val maxH = maxHeight
         val digits = lineCount.toString().length.coerceAtLeast(2)
         val gutterWidth = with(density) { (fontSize * 0.62f * digits).sp.toDp() } + 16.dp
 
@@ -141,7 +142,7 @@ fun CodeEditor(
                     text = remember(lineCount) { (1..lineCount).joinToString("\n") },
                     style = style.copy(color = MaterialTheme.colorScheme.outline, textAlign = TextAlign.End),
                     modifier = Modifier
-                        .heightIn(min = maxHeight)
+                        .heightIn(min = maxH)
                         .background(MaterialTheme.colorScheme.surfaceContainer)
                         .padding(start = 4.dp, end = 8.dp, top = 8.dp, bottom = 8.dp)
                         .widthIn(min = gutterWidth - 12.dp),
@@ -162,7 +163,7 @@ fun CodeEditor(
                         imeAction = ImeAction.None,
                     ),
                     modifier = Modifier
-                        .heightIn(min = maxHeight)
+                        .heightIn(min = maxH)
                         .widthIn(min = with(density) { (viewportW - (if (lineNumbers) gutterWidth.toPx() else 0f)).toDp() })
                         .padding(horizontal = 8.dp, vertical = 8.dp)
                         .focusRequester(focusRequester)
