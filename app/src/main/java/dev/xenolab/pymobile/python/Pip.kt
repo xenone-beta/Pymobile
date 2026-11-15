@@ -1,0 +1,47 @@
+package dev.xenolab.pymobile.python
+
+import org.json.JSONArray
+
+data class PipPackage(val name: String, val version: String)
+
+/** Helpers around pip: what to run, and how to read what it prints. */
+object Pip {
+
+    private const val OP = "(==|>=|<=|~=|!=|<|>)"
+    private const val VERSION = "[A-Za-z0-9.*+!_\\-]+"
+    private val requirement = Regex(
+        "^[A-Za-z0-9][A-Za-z0-9._\\-]*(\\[[A-Za-z0-9,_\\-]+\\])?($OP$VERSION(,$OP$VERSION)*)?$",
+    )
+
+    /** Splits user input into requirements and rejects anything that is not a plain package name. */
+    fun parseRequirements(input: String): List<String>? {
+        val parts = input.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+        if (parts.isEmpty()) return null
+        return if (parts.all { requirement.matches(it) }) parts else null
+    }
+
+    fun installArgs(requirements: List<String>, upgrade: Boolean = false): List<String> =
+        listOf("-m", "pip", "install") + (if (upgrade) listOf("--upgrade") else emptyList()) + requirements
+
+    fun requirementsFileArgs(file: String): List<String> = listOf("-m", "pip", "install", "-r", file)
+
+    fun uninstallArgs(name: String): List<String> = listOf("-m", "pip", "uninstall", "-y", name)
+
+    val listArgs: List<String> = listOf("-m", "pip", "list", "--format=json", "--disable-pip-version-check")
+
+    /** Reads the output of `pip list --format=json`. Extra text before the JSON is tolerated. */
+    fun parseList(output: String): List<PipPackage> {
+        val start = output.indexOf('[')
+        val end = output.lastIndexOf(']')
+        if (start < 0 || end < start) return emptyList()
+        return try {
+            val array = JSONArray(output.substring(start, end + 1))
+            List(array.length()) { i ->
+                val o = array.getJSONObject(i)
+                PipPackage(o.optString("name"), o.optString("version"))
+            }.filter { it.name.isNotEmpty() }.sortedBy { it.name.lowercase() }
+        } catch (_: org.json.JSONException) {
+            emptyList()
+        }
+    }
+}

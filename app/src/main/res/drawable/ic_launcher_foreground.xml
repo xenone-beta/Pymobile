@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Prompt chevron -->
+    <path
+        android:fillColor="#B9A7FF"
+        android:pathData="M30,36 L52,54 L30,72 L30,62 L40,54 L30,46 Z" />
+    <!-- Cursor underscore -->
+    <path
+        android:fillColor="#FFD54F"
+        android:pathData="M58,66 L80,66 L80,74 L58,74 Z" />
+</vector>
