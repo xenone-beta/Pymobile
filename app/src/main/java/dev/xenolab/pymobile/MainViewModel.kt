@@ -30,6 +30,9 @@ import dev.xenolab.pymobile.project.EditorTab
 import dev.xenolab.pymobile.project.FileError
 import dev.xenolab.pymobile.project.FileOp
 import dev.xenolab.pymobile.project.ProjectFiles
+import dev.xenolab.pymobile.pypi.PackageDetail
+import dev.xenolab.pymobile.pypi.PyPi
+import dev.xenolab.pymobile.pypi.SearchHit
 import dev.xenolab.pymobile.python.BackgroundRuns
 import dev.xenolab.pymobile.python.BackgroundWatcher
 import dev.xenolab.pymobile.python.Pip
@@ -39,6 +42,11 @@ import dev.xenolab.pymobile.python.PythonPayload
 import dev.xenolab.pymobile.python.PythonRequest
 import dev.xenolab.pymobile.python.RunConfig
 import dev.xenolab.pymobile.python.RunConfigs
+import dev.xenolab.pymobile.theme.Palette
+import dev.xenolab.pymobile.theme.Palettes
+import dev.xenolab.pymobile.theme.Pmt
+import dev.xenolab.pymobile.theme.StoredTheme
+import dev.xenolab.pymobile.theme.ThemeStore
 import dev.xenolab.pymobile.python.PythonRunner
 import dev.xenolab.pymobile.python.PythonSession
 import dev.xenolab.pymobile.python.RunListener
@@ -83,6 +91,13 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     var gitEmail by mutableStateOf(settings.gitEmail); private set
     var gitToken by mutableStateOf(settings.gitToken); private set
     var autoSave by mutableStateOf(settings.autoSave); private set
+
+    // ---- editor themes ----
+    private val themeStore = ThemeStore(File(app.filesDir, "themes"))
+    var editorTheme by mutableStateOf(settings.editorTheme); private set
+    var userThemes by mutableStateOf<List<StoredTheme>>(themeStore.list()); private set
+    /** The palette in use, or null to follow the app's own colors. */
+    var palette by mutableStateOf<Palette?>(null); private set
 
     // ---- files and tabs ----
     var hasAllFiles by mutableStateOf(false); private set
@@ -129,6 +144,16 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     val pipBusy: StateFlow<Boolean> = _pipBusy.asStateFlow()
     private var pipSession: PythonSession? = null
 
+    // ---- PyPI search ----
+    private val _pypiResults = MutableStateFlow<List<SearchHit>?>(null)
+    val pypiResults: StateFlow<List<SearchHit>?> = _pypiResults.asStateFlow()
+    private val _pypiBusy = MutableStateFlow(false)
+    val pypiBusy: StateFlow<Boolean> = _pypiBusy.asStateFlow()
+    private val _pypiError = MutableStateFlow<String?>(null)
+    val pypiError: StateFlow<String?> = _pypiError.asStateFlow()
+    private val _pypiDetail = MutableStateFlow<PackageDetail?>(null)
+    val pypiDetail: StateFlow<PackageDetail?> = _pypiDetail.asStateFlow()
+
     // ---- git ----
     private val _gitStatus = MutableStateFlow<GitStatusInfo?>(null)
     val gitStatus: StateFlow<GitStatusInfo?> = _gitStatus.asStateFlow()
@@ -142,6 +167,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         // JGit looks for ~/.gitconfig; give it a harmless home.
         System.setProperty("user.home", paths.homeDir.absolutePath)
         refreshStorage()
+        resolvePalette()
         viewModelScope.launch { prepare() }
         viewModelScope.launch {
             while (true) {
@@ -208,6 +234,84 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     fun updateGitEmail(v: String) { settings.gitEmail = v.trim(); gitEmail = settings.gitEmail }
     fun updateGitToken(v: String) { settings.gitToken = v.trim(); gitToken = settings.gitToken }
     fun updateAutoSave(v: Boolean) { settings.autoSave = v; autoSave = v }
+
+    // =====================================================================================
+    // Editor themes (.pmt files)
+    // =====================================================================================
+
+    private fun resolvePalette() {
+        palette = Palettes.byId(editorTheme) ?: themeStore.read(editorTheme)
+        if (palette == null && editorTheme != "app") {
+            // The theme file is gone; fall back to the app colors.
+            editorTheme = "app"
+            settings.editorTheme = "app"
+        }
+    }
+
+    fun selectTheme(id: String) {
+        settings.editorTheme = id
+        editorTheme = id
+        resolvePalette()
+    }
+
+    /** Saves a theme the user made or edited and selects it. [replaceId] overwrites an existing user theme. */
+    fun saveTheme(p: Palette, replaceId: String? = null): Boolean {
+        val id = themeStore.save(p, replaceId)
+        if (id == null) {
+            toast = app.getString(R.string.msg_failed)
+            return false
+        }
+        userThemes = themeStore.list()
+        selectTheme(id)
+        return true
+    }
+
+    fun deleteTheme(id: String) {
+        themeStore.delete(id)
+        userThemes = themeStore.list()
+        if (editorTheme == id) selectTheme("app")
+    }
+
+    fun importTheme(uri: Uri) {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val bytes = app.contentResolver.openInputStream(uri)?.use { it.readNBytesCapped(Pmt.MAX_BYTES + 1) }
+                    if (bytes == null) null else Pmt.parse(String(bytes, Charsets.UTF_8))
+                }.getOrNull()
+            }
+            when (result) {
+                is Pmt.Result.Ok -> {
+                    if (saveTheme(result.palette)) toast = app.getString(R.string.msg_theme_imported, result.palette.name)
+                }
+                is Pmt.Result.Error -> toast = app.getString(R.string.msg_theme_bad, result.message)
+                null -> toast = app.getString(R.string.msg_failed)
+            }
+        }
+    }
+
+    fun exportTheme(p: Palette, uri: Uri) {
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    app.contentResolver.openOutputStream(uri, "wt")?.use { it.write(Pmt.write(p).toByteArray(Charsets.UTF_8)) } != null
+                }.getOrDefault(false)
+            }
+            toast = app.getString(if (ok) R.string.msg_exported else R.string.msg_export_failed)
+        }
+    }
+
+    /** Reads at most [limit] bytes. */
+    private fun java.io.InputStream.readNBytesCapped(limit: Int): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        val buffer = ByteArray(8192)
+        while (out.size() < limit) {
+            val n = read(buffer, 0, minOf(buffer.size, limit - out.size()))
+            if (n < 0) break
+            out.write(buffer, 0, n)
+        }
+        return out.toByteArray()
+    }
 
     // =====================================================================================
     // Storage and the file browser
@@ -314,8 +418,38 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     // Tabs and editing
     // =====================================================================================
 
+    private var tabsRestored = false
+    private var pendingExternal: Uri? = null
+
+    /** A file or theme another app asked us to open. Held back until the saved tabs are back. */
+    fun openExternal(uri: Uri) {
+        if (!tabsRestored) {
+            pendingExternal = uri
+            return
+        }
+        handleExternal(uri)
+    }
+
+    private fun handleExternal(uri: Uri) {
+        if (uri.lastPathSegment?.endsWith("." + Pmt.EXTENSION, ignoreCase = true) == true) {
+            importTheme(uri)
+            return
+        }
+        if (uri.scheme == "file") {
+            val f = uri.path?.let { File(it) }
+            if (f != null && f.isFile && f.canRead() && f.canWrite() && ProjectFiles.isEditable(f)) {
+                openFile(f)
+                return
+            }
+        }
+        importFromUri(app.contentResolver, uri)
+    }
+
     private fun restoreTabs() {
-        if (tabs.isNotEmpty()) return
+        if (tabs.isNotEmpty()) {
+            tabsRestored = true
+            return
+        }
         viewModelScope.launch {
             val opened = withContext(Dispatchers.IO) {
                 settings.openTabs.map(::File).filter { it.isFile && ProjectFiles.isEditable(it) }
@@ -345,6 +479,11 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
                     refreshEntries()
                     openFile(File(it, "main.py"))
                 }
+            }
+            tabsRestored = true
+            pendingExternal?.let {
+                pendingExternal = null
+                handleExternal(it)
             }
         }
     }
@@ -722,8 +861,10 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val imported = withContext(Dispatchers.IO) {
                 runCatching {
-                    val rawName = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-                        ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+                    val rawName = runCatching {
+                        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                            ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+                    }.getOrNull() ?: uri.lastPathSegment
                     val name = File(rawName ?: "imported.py").name.takeIf { ProjectFiles.isValidName(it) } ?: "imported.py"
                     val out = java.io.ByteArrayOutputStream()
                     val buffer = ByteArray(8192)
@@ -848,6 +989,45 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             return
         }
         pipRun(Pip.requirementsFileArgs(file.absolutePath), "install -r requirements.txt")
+    }
+
+    fun pypiSearch(query: String) {
+        val q = query.trim()
+        if (q.isEmpty() || _pypiBusy.value) return
+        viewModelScope.launch {
+            _pypiBusy.value = true
+            _pypiError.value = null
+            try {
+                _pypiResults.value = PyPi.search(q)
+            } catch (e: Exception) {
+                _pypiResults.value = null
+                _pypiError.value = app.getString(R.string.pypi_failed, e.message ?: e.javaClass.simpleName)
+            } finally {
+                _pypiBusy.value = false
+            }
+        }
+    }
+
+    fun pypiClear() {
+        _pypiResults.value = null
+        _pypiError.value = null
+    }
+
+    fun pypiOpen(name: String) {
+        _pypiDetail.value = null
+        _pypiError.value = null
+        viewModelScope.launch {
+            try {
+                _pypiDetail.value = PyPi.detail(name)
+            } catch (e: Exception) {
+                _pypiError.value = app.getString(R.string.pypi_failed, e.message ?: e.javaClass.simpleName)
+            }
+        }
+    }
+
+    fun pypiCloseDetail() {
+        _pypiDetail.value = null
+        _pypiError.value = null
     }
 
     fun pipCancel() {

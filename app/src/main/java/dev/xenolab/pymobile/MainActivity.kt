@@ -34,10 +34,14 @@ import dev.xenolab.pymobile.ui.git.GitScreen
 import dev.xenolab.pymobile.ui.pip.PipScreen
 import dev.xenolab.pymobile.ui.settings.SettingsScreen
 import dev.xenolab.pymobile.ui.setup.SetupScreen
+import dev.xenolab.pymobile.ui.themes.ThemesScreen
+import dev.xenolab.pymobile.theme.Palette
+import dev.xenolab.pymobile.theme.Pmt
+import dev.xenolab.pymobile.theme.ThemeStore
 import dev.xenolab.pymobile.ui.theme.PymobileTheme
 import kotlinx.coroutines.launch
 
-private enum class Screen { EDITOR, PIP, GIT, SETTINGS }
+private enum class Screen { EDITOR, PIP, GIT, SETTINGS, THEMES }
 
 class MainActivity : ComponentActivity() {
     private val vm: MainViewModel by viewModels()
@@ -50,16 +54,49 @@ class MainActivity : ComponentActivity() {
         if (uri != null) vm.exportTo(contentResolver, uri)
     }
 
+    private val importTheme = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.importTheme(uri)
+    }
+
+    private var exportingPalette: Palette? = null
+
+    private val exportTheme = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        val p = exportingPalette
+        if (uri != null && p != null) vm.exportTheme(p, uri)
+        exportingPalette = null
+    }
+
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (savedInstanceState == null) handleIntent(intent)
         setContent {
-            PymobileTheme(vm.themeMode, vm.dynamicColor) {
+            PymobileTheme(vm.themeMode, vm.dynamicColor, vm.palette) {
                 Surface(Modifier.fillMaxSize()) { Root() }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    /** "Open with" and "Share" from other apps. */
+    @Suppress("DEPRECATION")
+    private fun handleIntent(intent: Intent?) {
+        if (intent == null) return
+        val uri: Uri? = when (intent.action) {
+            Intent.ACTION_VIEW, Intent.ACTION_EDIT -> intent.data
+            Intent.ACTION_SEND ->
+                if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                else intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+            else -> null
+        }
+        if (uri != null) vm.openExternal(uri)
     }
 
     override fun onResume() {
@@ -117,7 +154,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        BackHandler(enabled = screen != Screen.EDITOR) { screen = Screen.EDITOR }
+        BackHandler(enabled = screen != Screen.EDITOR) { screen = if (screen == Screen.THEMES) Screen.SETTINGS else Screen.EDITOR }
         BackHandler(enabled = screen == Screen.EDITOR && drawer.isOpen) { scope.launch { drawer.close() } }
         BackHandler(enabled = screen == Screen.EDITOR && !drawer.isOpen && vm.consoleVisible) {
             if (vm.consoleFull) vm.consoleFull = false else vm.consoleVisible = false
@@ -136,7 +173,21 @@ class MainActivity : ComponentActivity() {
             }
             Screen.PIP -> PipScreen(vm, onBack = { screen = Screen.EDITOR })
             Screen.GIT -> GitScreen(vm, onBack = { screen = Screen.EDITOR }, onSettings = { screen = Screen.SETTINGS })
-            Screen.SETTINGS -> SettingsScreen(vm, onBack = { screen = Screen.EDITOR }, onRequestAllFiles = ::requestAllFiles)
+            Screen.SETTINGS -> SettingsScreen(
+                vm,
+                onBack = { screen = Screen.EDITOR },
+                onRequestAllFiles = ::requestAllFiles,
+                onThemes = { screen = Screen.THEMES },
+            )
+            Screen.THEMES -> ThemesScreen(
+                vm,
+                onBack = { screen = Screen.SETTINGS },
+                onImport = { importTheme.launch(arrayOf("*/*")) },
+                onExport = { p ->
+                    exportingPalette = p
+                    exportTheme.launch(ThemeStore.slug(p.name) + "." + Pmt.EXTENSION)
+                },
+            )
         }
     }
 }

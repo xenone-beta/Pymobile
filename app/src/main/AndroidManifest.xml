@@ -30,10 +30,50 @@
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|smallestScreenSize|uiMode"
             android:exported="true"
+            android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- "Open with Pymobile" for Python files, by type... -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <action android:name="android.intent.action.EDIT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="text/x-python" />
+                <data android:mimeType="text/x-script.python" />
+                <data android:mimeType="application/x-python" />
+                <data android:mimeType="application/x-python-code" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+
+            <!-- ...and by file name, for apps that send a generic type. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.py" />
+                <data android:pathPattern=".*\\..*\\.py" />
+                <data android:pathPattern=".*\\.pmt" />
+                <data android:pathPattern=".*\\..*\\.pmt" />
+            </intent-filter>
+
+            <!-- "Share" a Python file to Pymobile. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/x-python" />
+                <data android:mimeType="text/x-script.python" />
+                <data android:mimeType="application/x-python" />
             </intent-filter>
         </activity>
 

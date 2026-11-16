@@ -10,10 +10,13 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import dev.xenolab.pymobile.editor.TokenType
+import dev.xenolab.pymobile.theme.Palette
+import dev.xenolab.pymobile.theme.PaletteKey
 
 /** Colors for source code and the console, tuned separately for light and dark. */
 data class CodeColors(
@@ -28,6 +31,15 @@ data class CodeColors(
     val error: Color,
     val warning: Color,
     val ansi: List<Color>,
+    // Surfaces from a custom editor theme. Null means "use the app's Material colors".
+    val background: Color? = null,
+    val text: Color? = null,
+    val gutter: Color? = null,
+    val gutterText: Color? = null,
+    val caret: Color? = null,
+    val selection: Color? = null,
+    val consoleBackground: Color? = null,
+    val consoleText: Color? = null,
 ) {
     fun of(type: TokenType): Color = when (type) {
         TokenType.KEYWORD -> keyword
@@ -74,9 +86,26 @@ private fun ansiPalette(dark: Boolean): List<Color> = if (dark) listOf(
 
 val LocalCodeColors = staticCompositionLocalOf { LightCode }
 
+/** Turns an editor theme into the colors the editor and console use. */
+fun codeColorsOf(p: Palette): CodeColors {
+    fun c(key: PaletteKey) = Color(p[key])
+    return CodeColors(
+        keyword = c(PaletteKey.KEYWORD), builtin = c(PaletteKey.BUILTIN), string = c(PaletteKey.STRING),
+        comment = c(PaletteKey.COMMENT), number = c(PaletteKey.NUMBER), decorator = c(PaletteKey.DECORATOR),
+        function = c(PaletteKey.FUNCTION), klass = c(PaletteKey.CLASS),
+        error = c(PaletteKey.ERROR), warning = c(PaletteKey.WARNING),
+        ansi = ansiPalette(dark = p.dark),
+        background = c(PaletteKey.BACKGROUND), text = c(PaletteKey.TEXT),
+        gutter = c(PaletteKey.GUTTER), gutterText = c(PaletteKey.GUTTER_TEXT),
+        caret = c(PaletteKey.CARET), selection = c(PaletteKey.SELECTION),
+        consoleBackground = c(PaletteKey.CONSOLE_BACKGROUND), consoleText = c(PaletteKey.CONSOLE_TEXT),
+    )
+}
+
 @Composable
-fun PymobileTheme(themeMode: Int, dynamicColor: Boolean, content: @Composable () -> Unit) {
-    val dark = when (themeMode) {
+fun PymobileTheme(themeMode: Int, dynamicColor: Boolean, palette: Palette? = null, content: @Composable () -> Unit) {
+    // A chosen editor theme decides light or dark for the whole app so the screen matches the editor.
+    val dark = palette?.dark ?: when (themeMode) {
         1 -> false
         2 -> true
         else -> isSystemInDarkTheme()
@@ -88,7 +117,8 @@ fun PymobileTheme(themeMode: Int, dynamicColor: Boolean, content: @Composable ()
         dark -> darkColorScheme(primary = Color(0xFFB9C3FF), secondary = Color(0xFFC4C5DD), tertiary = Color(0xFFE6BAD7))
         else -> lightColorScheme(primary = Color(0xFF4F5BD5), secondary = Color(0xFF5B5D72), tertiary = Color(0xFF77536D))
     }
-    CompositionLocalProvider(LocalCodeColors provides if (dark) DarkCode else LightCode) {
+    val code = remember(palette, dark) { if (palette != null) codeColorsOf(palette) else if (dark) DarkCode else LightCode }
+    CompositionLocalProvider(LocalCodeColors provides code) {
         MaterialTheme(colorScheme = scheme, content = content)
     }
 }

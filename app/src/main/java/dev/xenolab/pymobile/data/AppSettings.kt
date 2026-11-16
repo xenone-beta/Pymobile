@@ -67,6 +67,11 @@ class AppSettings(context: Context) {
         get() = prefs.getString("active_tab", "") ?: ""
         set(v) = prefs.edit().putString("active_tab", v).apply()
 
+    /** "app" (follow the app colors), a built-in id such as "monokai", or "user:<file>". */
+    var editorTheme: String
+        get() = prefs.getString("editor_theme", "app") ?: "app"
+        set(v) = prefs.edit().putString("editor_theme", v).apply()
+
     /** Save a moment after typing stops, instead of only on request. */
     var autoSave: Boolean
         get() = prefs.getBoolean("auto_save", true)

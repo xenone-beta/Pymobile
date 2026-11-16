@@ -82,7 +82,8 @@ fun ConsolePanel(
         if (last >= lines.size - 3 || last < 0) listState.scrollToItem(lines.size - 1)
     }
 
-    Column(modifier.background(MaterialTheme.colorScheme.surfaceContainerLow)) {
+    val consoleText = colors.consoleText ?: MaterialTheme.colorScheme.onSurface
+    Column(modifier.background(colors.consoleBackground ?: MaterialTheme.colorScheme.surfaceContainerLow)) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -138,7 +139,7 @@ fun ConsolePanel(
                             fontFamily = FontFamily.Monospace,
                             fontSize = fontSize.sp,
                             lineHeight = (fontSize * 1.35f).sp,
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = consoleText,
                         ),
                         modifier = if (trace != null) {
                             Modifier.fillMaxWidth().clickable { onOpenTrace(trace.file, trace.line) }

@@ -59,7 +59,7 @@ private fun SwitchRow(title: String, checked: Boolean, onChange: (Boolean) -> Un
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit, onRequestAllFiles: () -> Unit) {
+fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit, onRequestAllFiles: () -> Unit, onThemes: () -> Unit) {
     val setup by vm.setup.collectAsState()
     Scaffold(
         topBar = {
@@ -78,6 +78,19 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit, onRequestAllFiles: () 
                 ) {
                     RadioButton(selected = vm.themeMode == mode, onClick = { vm.updateThemeMode(mode) })
                     Text(stringResource(label))
+                }
+            }
+            Row(
+                Modifier.fillMaxWidth().clickable(onClick = onThemes).padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.editor_theme), style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        vm.palette?.name ?: stringResource(R.string.theme_follow_app),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
             SwitchRow(stringResource(R.string.dynamic_color), vm.dynamicColor, vm::updateDynamicColor, enabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)

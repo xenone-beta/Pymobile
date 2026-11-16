@@ -1,5 +1,6 @@
 package dev.xenolab.pymobile.ui.pip
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,7 +21,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SystemUpdateAlt
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -65,6 +70,10 @@ fun PipScreen(vm: MainViewModel, onBack: () -> Unit) {
     val busy by vm.pipBusy.collectAsState()
     val error by vm.pipError.collectAsState()
     val log by vm.pipLines.collectAsState()
+    val results by vm.pypiResults.collectAsState()
+    val searching by vm.pypiBusy.collectAsState()
+    val pypiProblem by vm.pypiError.collectAsState()
+    var detailFor by remember { mutableStateOf<String?>(null) }
     val snackbar = remember { SnackbarHostState() }
     var query by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf("") }
@@ -89,7 +98,7 @@ fun PipScreen(vm: MainViewModel, onBack: () -> Unit) {
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (busy || searching) LinearProgressIndicator(Modifier.fillMaxWidth())
             Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
                     value = query,
@@ -107,8 +116,19 @@ fun PipScreen(vm: MainViewModel, onBack: () -> Unit) {
                 ) { Text(stringResource(R.string.install)) }
             }
             Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { vm.pypiSearch(query) }, enabled = !searching && query.isNotBlank()) {
+                    Text(stringResource(R.string.pypi_search))
+                }
                 OutlinedButton(onClick = { vm.pipInstallRequirements() }, enabled = !busy) { Text(stringResource(R.string.install_requirements)) }
                 if (busy) OutlinedButton(onClick = { vm.pipCancel() }) { Text(stringResource(R.string.stop)) }
+            }
+            if (pypiProblem != null && detailFor == null) {
+                Text(
+                    pypiProblem.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
             }
             Text(
                 stringResource(R.string.pip_note),
@@ -185,6 +205,44 @@ fun PipScreen(vm: MainViewModel, onBack: () -> Unit) {
                     )
                 }
                 LazyColumn(Modifier.weight(1f)) {
+                    val hits = results
+                    if (hits != null) {
+                        item(key = "pypi-header") {
+                            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    stringResource(R.string.pypi_results, hits.size),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                TextButton(onClick = { vm.pypiClear() }) { Text(stringResource(R.string.close)) }
+                            }
+                        }
+                        if (hits.isEmpty()) {
+                            item(key = "pypi-empty") {
+                                Text(
+                                    stringResource(R.string.pypi_nothing),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                                )
+                            }
+                        }
+                        items(hits, key = { "pypi-" + it.name }) { hit ->
+                            ListItem(
+                                headlineContent = { Text(hit.name) },
+                                supportingContent = {
+                                    Text(
+                                        listOf(hit.version, hit.summary).filter { it.isNotEmpty() }.joinToString(" · "),
+                                        maxLines = 2,
+                                    )
+                                },
+                                modifier = Modifier.clickable {
+                                    detailFor = hit.name
+                                    vm.pypiOpen(hit.name)
+                                },
+                            )
+                        }
+                        item(key = "pypi-divider") { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
+                    }
                     items(list, key = { it.name }) { p ->
                         ListItem(
                             headlineContent = { Text(p.name) },
@@ -206,6 +264,10 @@ fun PipScreen(vm: MainViewModel, onBack: () -> Unit) {
         }
     }
 
+    detailFor?.let { name ->
+        PackageDialog(vm, name, onDismiss = { detailFor = null })
+    }
+
     removing?.let { name ->
         ConfirmDialog(
             title = stringResource(R.string.uninstall),
@@ -215,4 +277,72 @@ fun PipScreen(vm: MainViewModel, onBack: () -> Unit) {
             onDismiss = { removing = null },
         )
     }
+}
+
+@Composable
+private fun PackageDialog(vm: MainViewModel, name: String, onDismiss: () -> Unit) {
+    val detail by vm.pypiDetail.collectAsState()
+    val problem by vm.pypiError.collectAsState()
+    var chosen by remember(detail) { mutableStateOf(detail?.versions?.firstOrNull()?.version) }
+    var menu by remember { mutableStateOf(false) }
+    val close = { vm.pypiCloseDetail(); onDismiss() }
+
+    AlertDialog(
+        onDismissRequest = close,
+        title = { Text(detail?.name ?: name) },
+        text = {
+            val d = detail
+            if (d == null) {
+                Text(
+                    problem ?: stringResource(R.string.loading),
+                    color = if (problem != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Column {
+                    if (d.summary.isNotEmpty()) Text(d.summary, style = MaterialTheme.typography.bodyMedium)
+                    if (d.requiresPython.isNotEmpty()) {
+                        Text(
+                            stringResource(R.string.pypi_requires_python, d.requiresPython),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
+                    if (d.versions.isEmpty()) {
+                        Text(stringResource(R.string.pypi_no_files), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
+                    } else {
+                        Text(stringResource(R.string.pypi_version), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 12.dp))
+                        androidx.compose.foundation.layout.Box {
+                            OutlinedButton(onClick = { menu = true }) {
+                                Text((chosen ?: "") + if (chosen == d.versions.first().version) "  " + stringResource(R.string.pypi_latest) else "")
+                            }
+                            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                for (v in d.versions) {
+                                    DropdownMenuItem(
+                                        text = { Text(v.version + if (v.pure) "" else "  ⚠") },
+                                        onClick = { chosen = v.version; menu = false },
+                                    )
+                                }
+                            }
+                        }
+                        val pure = d.versions.firstOrNull { it.version == chosen }?.pure == true
+                        Text(
+                            stringResource(if (pure) R.string.pypi_pure else R.string.pypi_not_pure),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (pure) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            val d = detail
+            TextButton(
+                onClick = { if (d != null && chosen != null) vm.pipInstall(d.name + "==" + chosen); close() },
+                enabled = d != null && chosen != null,
+            ) { Text(stringResource(R.string.install)) }
+        },
+        dismissButton = { TextButton(onClick = close) { Text(stringResource(R.string.cancel)) } },
+    )
 }

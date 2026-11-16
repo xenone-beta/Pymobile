@@ -15,6 +15,9 @@ highlighting and hints, a console with `input()` support and Git — in Material
   no keyboard input) and the app reconnects to it when you come back
 - Per-file arguments and environment variables, open a file from the device, save a copy, auto-save with
   draft recovery after a crash
+- Editor themes: seven built-in colour schemes, your own themes edited in the app, and `.pmt` files
+  (a small JSON document: name, dark/light and the colours) that you can import and export
+- "Open with Pymobile" for `.py` and `.pmt` files from other apps; PyPI search with version picker
 - English and Russian
 
 ## How it works
@@ -49,3 +52,20 @@ Set the repository secrets `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, 
 and push a tag like `v0.1.0`.
 
 MIT license.
+
+## Theme files (.pmt)
+
+```json
+{
+  "pmt": 1,
+  "name": "My theme",
+  "author": "you",
+  "dark": true,
+  "colors": { "background": "#1E1E2E", "text": "#CDD6F4", "keyword": "#CBA6F7" }
+}
+```
+
+Colors are `#RGB`, `#RRGGBB` or `#AARRGGBB`. Keys: `background`, `text`, `gutter`, `gutterText`, `caret`,
+`selection`, `keyword`, `builtin`, `string`, `comment`, `number`, `decorator`, `function`, `class`, `error`,
+`warning`, `consoleBackground`, `consoleText`. Missing keys come from a built-in dark or light theme
+(`dark` decides which).

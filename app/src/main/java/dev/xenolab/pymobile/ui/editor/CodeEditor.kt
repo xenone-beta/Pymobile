@@ -15,7 +15,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -102,7 +105,7 @@ fun CodeEditor(
         fontFamily = FontFamily.Monospace,
         fontSize = fontSize.sp,
         lineHeight = lineHeight,
-        color = MaterialTheme.colorScheme.onSurface,
+        color = colors.text ?: MaterialTheme.colorScheme.onSurface,
     )
     val lineCount = remember(value.text.length, value.text.count { it == '\n' }) { value.text.count { it == '\n' } + 1 }
     val transformation = remember(tab, colors) { PythonTransformation(tab, colors, tab.file.extension == "py") }
@@ -115,7 +118,12 @@ fun CodeEditor(
         }
     }
 
-    BoxWithConstraints(modifier.background(MaterialTheme.colorScheme.surface)) {
+    val selectionColors = TextSelectionColors(
+        handleColor = colors.caret ?: MaterialTheme.colorScheme.primary,
+        backgroundColor = colors.selection ?: MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+    )
+
+    BoxWithConstraints(modifier.background(colors.background ?: MaterialTheme.colorScheme.surface)) {
         val viewportH = with(density) { maxHeight.toPx() }
         val viewportW = with(density) { maxWidth.toPx() }
         val maxH = maxHeight
@@ -140,20 +148,21 @@ fun CodeEditor(
             if (lineNumbers) {
                 Text(
                     text = remember(lineCount) { (1..lineCount).joinToString("\n") },
-                    style = style.copy(color = MaterialTheme.colorScheme.outline, textAlign = TextAlign.End),
+                    style = style.copy(color = colors.gutterText ?: MaterialTheme.colorScheme.outline, textAlign = TextAlign.End),
                     modifier = Modifier
                         .heightIn(min = maxH)
-                        .background(MaterialTheme.colorScheme.surfaceContainer)
+                        .background(colors.gutter ?: MaterialTheme.colorScheme.surfaceContainer)
                         .padding(start = 4.dp, end = 8.dp, top = 8.dp, bottom = 8.dp)
                         .widthIn(min = gutterWidth - 12.dp),
                 )
             }
             Box(Modifier.weight(1f).horizontalScroll(hScroll)) {
+                CompositionLocalProvider(LocalTextSelectionColors provides selectionColors) {
                 BasicTextField(
                     value = value,
                     onValueChange = { EditorOps.userChange(tab, it, autoPair) },
                     textStyle = style,
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    cursorBrush = SolidColor(colors.caret ?: MaterialTheme.colorScheme.primary),
                     visualTransformation = transformation,
                     onTextLayout = { layout = it },
                     keyboardOptions = KeyboardOptions(
@@ -181,6 +190,7 @@ fun CodeEditor(
                             }
                         },
                 )
+                }
             }
         }
     }
