@@ -63,6 +63,7 @@ fun PipScreen(vm: MainViewModel, onBack: () -> Unit) {
     val log by vm.pipLines.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var query by remember { mutableStateOf("") }
+    var filter by remember { mutableStateOf("") }
     var removing by remember { mutableStateOf<String?>(null) }
     val colors = LocalCodeColors.current
     val logState = rememberLazyListState()
@@ -139,10 +140,26 @@ fun PipScreen(vm: MainViewModel, onBack: () -> Unit) {
                 HorizontalDivider()
             }
 
-            val list = packages
-            if (list == null) {
+            val all = packages
+            if (all == null) {
                 Text(stringResource(R.string.loading), modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
+                val list = if (filter.isBlank()) all else all.filter { it.name.contains(filter.trim(), ignoreCase = true) }
+                Text(
+                    stringResource(R.string.installed_packages, all.size),
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(16.dp, 12.dp, 16.dp, 0.dp),
+                )
+                if (all.size > 6) {
+                    OutlinedTextField(
+                        value = filter,
+                        onValueChange = { filter = it },
+                        label = { Text(stringResource(R.string.filter_packages)) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
                 LazyColumn(Modifier.weight(1f)) {
                     items(list, key = { it.name }) { p ->
                         ListItem(

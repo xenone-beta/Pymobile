@@ -1,6 +1,7 @@
 package dev.xenolab.pymobile.ui.files
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -15,7 +16,14 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.NoteAdd
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.SaveAlt
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -34,6 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.xenolab.pymobile.MainViewModel
@@ -45,9 +54,30 @@ import java.io.File
 
 private enum class Prompt { NEW_FILE, NEW_FOLDER, NEW_PROJECT }
 
+/** What the entries at the bottom of the drawer do; the activity owns the screens and file pickers. */
+class DrawerActions(
+    val onPickFile: () -> Unit,
+    val onExport: () -> Unit,
+    val onPip: () -> Unit,
+    val onGit: () -> Unit,
+    val onSettings: () -> Unit,
+)
+
+@Composable
+private fun DrawerEntry(icon: ImageVector, label: String, enabled: Boolean = true, onClick: () -> Unit) {
+    val color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+    Row(
+        Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick).padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = color)
+        Text(label, color = color, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = 16.dp))
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun FilesDrawer(vm: MainViewModel, onOpened: () -> Unit, onRequestAllFiles: () -> Unit) {
+fun FilesDrawer(vm: MainViewModel, actions: DrawerActions, onOpened: () -> Unit, onRequestAllFiles: () -> Unit) {
     var prompt by remember { mutableStateOf<Prompt?>(null) }
     var menuFor by remember { mutableStateOf<File?>(null) }
     var renameFor by remember { mutableStateOf<File?>(null) }
@@ -135,6 +165,16 @@ fun FilesDrawer(vm: MainViewModel, onOpened: () -> Unit, onRequestAllFiles: () -
                 }
             }
         }
+        HorizontalDivider()
+        val hasTab = vm.activeTab != null
+        val isPython = vm.activeTab?.file?.extension == "py"
+        DrawerEntry(Icons.Filled.FileOpen, stringResource(R.string.open_from_device)) { actions.onPickFile(); onOpened() }
+        DrawerEntry(Icons.Filled.SaveAlt, stringResource(R.string.save_copy), enabled = hasTab) { actions.onExport(); onOpened() }
+        DrawerEntry(Icons.Filled.Terminal, stringResource(R.string.console)) { vm.consoleVisible = !vm.consoleVisible; onOpened() }
+        DrawerEntry(Icons.Filled.Tune, stringResource(R.string.run_settings), enabled = isPython) { vm.showRunSettings = true; onOpened() }
+        DrawerEntry(Icons.Filled.Extension, stringResource(R.string.packages)) { actions.onPip(); onOpened() }
+        DrawerEntry(Icons.Filled.AccountTree, stringResource(R.string.git)) { actions.onGit(); onOpened() }
+        DrawerEntry(Icons.Filled.Settings, stringResource(R.string.settings)) { actions.onSettings(); onOpened() }
     }
 
     when (prompt) {

@@ -26,6 +26,7 @@ object Formatter {
             if (span.type != TokenType.STRING) continue
             for (k in lines.indices) {
                 if (lineStarts[k] > span.start && lineStarts[k] < span.end) protectedLines[k] = true
+                // A line whose end is inside a string keeps its trailing spaces too.
                 val lineEnd = lineStarts[k] + lines[k].length
                 if (lineEnd > span.start && lineEnd < span.end) protectedLines[k] = true
             }

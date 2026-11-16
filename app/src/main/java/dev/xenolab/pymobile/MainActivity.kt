@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.DrawerValue
@@ -17,6 +18,7 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Surface
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.app.ActivityCompat
 import dev.xenolab.pymobile.ui.editor.EditorScreen
+import dev.xenolab.pymobile.ui.files.DrawerActions
 import dev.xenolab.pymobile.ui.files.FilesDrawer
 import dev.xenolab.pymobile.ui.git.GitScreen
 import dev.xenolab.pymobile.ui.pip.PipScreen
@@ -38,6 +41,16 @@ private enum class Screen { EDITOR, PIP, GIT, SETTINGS }
 
 class MainActivity : ComponentActivity() {
     private val vm: MainViewModel by viewModels()
+
+    private val pickFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.importFromUri(contentResolver, uri)
+    }
+
+    private val saveCopy = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        if (uri != null) vm.exportTo(contentResolver, uri)
+    }
+
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,7 +68,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
-        vm.saveAll()
+        vm.flushPending()
         super.onPause()
     }
 
@@ -87,6 +100,22 @@ class MainActivity : ComponentActivity() {
         var screen by remember { mutableStateOf(Screen.EDITOR) }
         val drawer = rememberDrawerState(DrawerValue.Closed)
         val scope = rememberCoroutineScope()
+        val actions = remember {
+            DrawerActions(
+                onPickFile = { pickFile.launch(arrayOf("*/*")) },
+                onExport = { saveCopy.launch(vm.activeTab?.file?.name ?: "script.py") },
+                onPip = { screen = Screen.PIP },
+                onGit = { screen = Screen.GIT },
+                onSettings = { screen = Screen.SETTINGS },
+            )
+        }
+
+        LaunchedEffect(vm.askNotifications) {
+            if (vm.askNotifications) {
+                vm.askNotifications = false
+                if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
 
         BackHandler(enabled = screen != Screen.EDITOR) { screen = Screen.EDITOR }
         BackHandler(enabled = screen == Screen.EDITOR && drawer.isOpen) { scope.launch { drawer.close() } }
@@ -99,7 +128,7 @@ class MainActivity : ComponentActivity() {
                 drawerState = drawer,
                 drawerContent = {
                     ModalDrawerSheet {
-                        FilesDrawer(vm, onOpened = { scope.launch { drawer.close() } }, onRequestAllFiles = ::requestAllFiles)
+                        FilesDrawer(vm, actions, onOpened = { scope.launch { drawer.close() } }, onRequestAllFiles = ::requestAllFiles)
                     }
                 },
             ) {

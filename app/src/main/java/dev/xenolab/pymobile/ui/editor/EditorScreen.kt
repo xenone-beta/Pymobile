@@ -67,6 +67,7 @@ fun EditorScreen(
     val snackbar = remember { SnackbarHostState() }
     val tab = vm.activeTab
     val running by vm.running.collectAsState()
+    val background by vm.background.collectAsState()
     val lines by vm.consoleLines.collectAsState()
     var menu by remember { mutableStateOf(false) }
     var closing by remember { mutableStateOf<Int?>(null) }
@@ -105,6 +106,16 @@ fun EditorScreen(
                     }
                     IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, null) }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.run_background)) },
+                            enabled = tab?.file?.extension == "py" && !running,
+                            onClick = { menu = false; vm.run(inBackground = true) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.run_settings)) },
+                            enabled = tab?.file?.extension == "py",
+                            onClick = { menu = false; vm.showRunSettings = true },
+                        )
                         DropdownMenuItem(text = { Text(stringResource(R.string.save)) }, enabled = tab != null, onClick = { menu = false; vm.saveActive() })
                         DropdownMenuItem(text = { Text(stringResource(R.string.format_code)) }, enabled = tab?.file?.extension == "py", onClick = { menu = false; vm.formatActive() })
                         DropdownMenuItem(text = { Text(stringResource(R.string.toggle_comment)) }, enabled = tab != null, onClick = { menu = false; tab?.let { EditorOps.toggleComment(it) } })
@@ -161,6 +172,7 @@ fun EditorScreen(
                 ConsolePanel(
                     lines = lines,
                     running = running,
+                    canInput = running && !background,
                     fontSize = (vm.fontSize - 1).coerceAtLeast(10),
                     full = vm.consoleFull,
                     onToggleFull = { vm.consoleFull = !vm.consoleFull },
@@ -174,6 +186,10 @@ fun EditorScreen(
                 )
             }
         }
+    }
+
+    if (vm.showRunSettings && tab != null) {
+        RunSettingsDialog(vm, tab.file, onDismiss = { vm.showRunSettings = false })
     }
 
     closing?.let { index ->

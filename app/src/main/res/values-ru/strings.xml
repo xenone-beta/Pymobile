@@ -109,6 +109,34 @@
     <string name="unsaved_title">Несохранённые изменения</string>
     <string name="up">Вверх</string>
     <string name="upgrade">Обновить пакет</string>
+    <string name="run_background">Запустить в фоне</string>
+    <string name="run_background_tag">в фоне</string>
+    <string name="run_settings">Параметры запуска…</string>
+    <string name="run_args">Аргументы</string>
+    <string name="run_args_hint">--verbose "мой файл.txt"</string>
+    <string name="run_env">Переменные окружения</string>
+    <string name="run_env_hint">Одна пара KEY=VALUE на строку</string>
+    <string name="run_settings_note">Действует при каждом запуске этого файла. Значения хранятся на устройстве в открытом виде.</string>
+    <string name="open_from_device">Открыть файл с устройства</string>
+    <string name="save_copy">Сохранить копию на устройство</string>
+    <string name="msg_imported">Файл «%1$s» скопирован в %2$s</string>
+    <string name="msg_import_failed">Не удалось открыть файл (слишком большой или не текст).</string>
+    <string name="msg_exported">Копия сохранена.</string>
+    <string name="msg_export_failed">Не удалось сохранить копию.</string>
+    <string name="msg_already_running">Уже что-то запущено. Сначала остановите.</string>
+    <string name="msg_pip_busy">Сейчас Python занят (pip или другой запуск). Повторите чуть позже.</string>
+    <string name="msg_bg_failed">Не удалось запустить фоновую службу: %s</string>
+    <string name="msg_bg_no_input">У фоновых скриптов нет ввода с клавиатуры.</string>
+    <string name="msg_restored">Восстановлены несохранённые изменения с прошлого сеанса.</string>
+    <string name="msg_bad_args">Проверьте кавычки в аргументах.</string>
+    <string name="msg_bad_env">Окружение: по одной паре KEY=VALUE на строку (PYTHONHOME и PYTHONUSERBASE зарезервированы).</string>
+    <string name="auto_save">Автосохранение</string>
+    <string name="bg_channel">Фоновые скрипты</string>
+    <string name="bg_running">Работает в фоне</string>
+    <string name="bg_finished">Завершён с кодом %d</string>
+    <string name="bg_reattached">Подключение к фоновому скрипту</string>
+    <string name="installed_packages">Установленные пакеты (%d)</string>
+    <string name="filter_packages">Фильтр</string>
     <plurals name="problems">
         <item quantity="one">%d проблема</item>
         <item quantity="few">%d проблемы</item>

@@ -91,6 +91,7 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit, onRequestAllFiles: () 
                 steps = AppSettings.MAX_FONT - AppSettings.MIN_FONT - 1,
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
+            SwitchRow(stringResource(R.string.auto_save), vm.autoSave, vm::updateAutoSave)
             SwitchRow(stringResource(R.string.line_numbers), vm.lineNumbers, vm::updateLineNumbers)
             SwitchRow(stringResource(R.string.auto_pair), vm.autoPair, vm::updateAutoPair)
             SwitchRow(stringResource(R.string.format_on_save), vm.formatOnSave, vm::updateFormatOnSave)

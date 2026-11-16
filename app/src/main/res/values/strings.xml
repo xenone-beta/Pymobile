@@ -109,6 +109,34 @@
     <string name="unsaved_title">Unsaved changes</string>
     <string name="up">Up</string>
     <string name="upgrade">Upgrade</string>
+    <string name="run_background">Run in background</string>
+    <string name="run_background_tag">background</string>
+    <string name="run_settings">Run settings…</string>
+    <string name="run_args">Arguments</string>
+    <string name="run_args_hint">--verbose "my file.txt"</string>
+    <string name="run_env">Environment variables</string>
+    <string name="run_env_hint">One KEY=VALUE per line</string>
+    <string name="run_settings_note">Applies to every run of this file. Values are stored unencrypted on this device.</string>
+    <string name="open_from_device">Open file from device</string>
+    <string name="save_copy">Save a copy to device</string>
+    <string name="msg_imported">Copied “%1$s” into %2$s</string>
+    <string name="msg_import_failed">Could not open this file (too large or not text).</string>
+    <string name="msg_exported">Copy saved.</string>
+    <string name="msg_export_failed">Could not save the copy.</string>
+    <string name="msg_already_running">Something is already running. Stop it first.</string>
+    <string name="msg_pip_busy">pip or another run is using Python right now. Try again in a moment.</string>
+    <string name="msg_bg_failed">Could not start the background service: %s</string>
+    <string name="msg_bg_no_input">Background scripts have no keyboard input.</string>
+    <string name="msg_restored">Restored unsaved changes from the last session.</string>
+    <string name="msg_bad_args">Check the quotes in the arguments.</string>
+    <string name="msg_bad_env">Environment: use KEY=VALUE on each line (PYTHONHOME and PYTHONUSERBASE are reserved).</string>
+    <string name="auto_save">Auto-save</string>
+    <string name="bg_channel">Background scripts</string>
+    <string name="bg_running">Running in the background</string>
+    <string name="bg_finished">Finished with exit code %d</string>
+    <string name="bg_reattached">Reconnected to a background script</string>
+    <string name="installed_packages">Installed packages (%d)</string>
+    <string name="filter_packages">Filter</string>
     <plurals name="problems">
         <item quantity="one">%d problem</item>
         <item quantity="other">%d problems</item>

@@ -1,9 +1,12 @@
 package dev.xenolab.pymobile
 
 import android.app.Application
+import android.content.ContentResolver
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.provider.OpenableColumns
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -22,15 +25,20 @@ import dev.xenolab.pymobile.git.GitCommitInfo
 import dev.xenolab.pymobile.git.GitCredentials
 import dev.xenolab.pymobile.git.GitService
 import dev.xenolab.pymobile.git.GitStatusInfo
+import dev.xenolab.pymobile.project.Drafts
 import dev.xenolab.pymobile.project.EditorTab
 import dev.xenolab.pymobile.project.FileError
 import dev.xenolab.pymobile.project.FileOp
 import dev.xenolab.pymobile.project.ProjectFiles
+import dev.xenolab.pymobile.python.BackgroundRuns
+import dev.xenolab.pymobile.python.BackgroundWatcher
 import dev.xenolab.pymobile.python.Pip
 import dev.xenolab.pymobile.python.PipPackage
 import dev.xenolab.pymobile.python.PythonPaths
 import dev.xenolab.pymobile.python.PythonPayload
 import dev.xenolab.pymobile.python.PythonRequest
+import dev.xenolab.pymobile.python.RunConfig
+import dev.xenolab.pymobile.python.RunConfigs
 import dev.xenolab.pymobile.python.PythonRunner
 import dev.xenolab.pymobile.python.PythonSession
 import dev.xenolab.pymobile.python.RunListener
@@ -74,6 +82,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     var gitName by mutableStateOf(settings.gitName); private set
     var gitEmail by mutableStateOf(settings.gitEmail); private set
     var gitToken by mutableStateOf(settings.gitToken); private set
+    var autoSave by mutableStateOf(settings.autoSave); private set
 
     // ---- files and tabs ----
     var hasAllFiles by mutableStateOf(false); private set
@@ -94,6 +103,15 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     private val _running = MutableStateFlow(false)
     val running: StateFlow<Boolean> = _running.asStateFlow()
     private var session: PythonSession? = null
+    private val _background = MutableStateFlow(false)
+    /** True while the current run is a background script (no keyboard input). */
+    val background: StateFlow<Boolean> = _background.asStateFlow()
+    private var watcher: BackgroundWatcher? = null
+    var askNotifications by mutableStateOf(false)
+    var showRunSettings by mutableStateOf(false)
+    private val drafts = Drafts(File(app.filesDir, "drafts"))
+    private val lastSeen = HashMap<EditorTab, String>()
+    private val draftWritten = HashMap<EditorTab, String>()
     private var consoleUpdatePending = false
     var consoleVisible by mutableStateOf(false)
     var consoleFull by mutableStateOf(false)
@@ -122,6 +140,12 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         System.setProperty("user.home", paths.homeDir.absolutePath)
         refreshStorage()
         viewModelScope.launch { prepare() }
+        viewModelScope.launch {
+            while (true) {
+                delay(AUTOSAVE_TICK_MS)
+                persistPending(idleOnly = true)
+            }
+        }
     }
 
     // =====================================================================================
@@ -180,6 +204,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     fun updateGitName(v: String) { settings.gitName = v.trim(); gitName = settings.gitName }
     fun updateGitEmail(v: String) { settings.gitEmail = v.trim(); gitEmail = settings.gitEmail }
     fun updateGitToken(v: String) { settings.gitToken = v.trim(); gitToken = settings.gitToken }
+    fun updateAutoSave(v: Boolean) { settings.autoSave = v; autoSave = v }
 
     // =====================================================================================
     // Storage and the file browser
@@ -293,7 +318,22 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
                 settings.openTabs.map(::File).filter { it.isFile && ProjectFiles.isEditable(it) }
                     .map { it to ProjectFiles.read(it) }
             }
-            if (tabs.isEmpty()) opened.forEach { (f, text) -> tabs += EditorTab(f, text) }
+            var restored = false
+            if (tabs.isEmpty()) {
+                for ((f, text) in opened) {
+                    val tab = EditorTab(f, text)
+                    val draft = drafts.read(f.absolutePath)
+                    if (draft != null && draft != text) {
+                        tab.value = TextFieldValue(draft, TextRange(draft.length))
+                        restored = true
+                    } else if (draft != null) {
+                        drafts.delete(f.absolutePath)
+                    }
+                    tabs += tab
+                }
+            }
+            if (restored) toast = app.getString(R.string.msg_restored)
+            reattachBackground()
             val active = settings.activeTab
             activeIndex = tabs.indexOfFirst { it.file.absolutePath == active }.takeIf { it >= 0 } ?: 0
             if (tabs.isEmpty() && ProjectFiles.list(root).isEmpty()) {
@@ -356,7 +396,10 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     private fun forceClose(index: Int) {
         if (index !in tabs.indices) return
-        tabs.removeAt(index)
+        val closing = tabs.removeAt(index)
+        drafts.delete(closing.file.absolutePath)
+        lastSeen.remove(closing)
+        draftWritten.remove(closing)
         activeIndex = when {
             tabs.isEmpty() -> 0
             index < activeIndex -> activeIndex - 1
@@ -380,8 +423,53 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             }
         }
         val ok = ProjectFiles.write(tab.file, text)
-        if (ok) tab.saved = text else toast = app.getString(R.string.msg_failed)
+        if (ok) {
+            tab.saved = text
+            drafts.delete(tab.file.absolutePath)
+        } else {
+            toast = app.getString(R.string.msg_failed)
+        }
         return ok
+    }
+
+    /** Saves exactly what is in the editor (no formatting); used by auto-save. */
+    private fun saveRaw(tab: EditorTab): Boolean {
+        val text = tab.value.text
+        val ok = ProjectFiles.write(tab.file, text)
+        if (ok) {
+            tab.saved = text
+            drafts.delete(tab.file.absolutePath)
+        }
+        return ok
+    }
+
+    /**
+     * Auto-save or draft copies for tabs with unsaved changes. With [idleOnly] a tab is only handled once
+     * its text has stayed the same for a whole tick, so nothing is written while the user is typing.
+     */
+    private fun persistPending(idleOnly: Boolean) {
+        for (tab in tabs.toList()) {
+            val text = tab.value.text
+            if (!tab.dirty) {
+                lastSeen.remove(tab)
+                draftWritten.remove(tab)
+                continue
+            }
+            if (idleOnly && lastSeen[tab] != text) {
+                lastSeen[tab] = text
+                continue
+            }
+            if (autoSave) {
+                saveRaw(tab)
+            } else if (draftWritten[tab] != text && drafts.write(tab.file.absolutePath, text)) {
+                draftWritten[tab] = text
+            }
+        }
+    }
+
+    /** Called when the app leaves the screen: nothing typed may be lost if the process is killed now. */
+    fun flushPending() {
+        persistPending(idleOnly = false)
     }
 
     fun saveAll() {
@@ -442,21 +530,57 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         console.append("\u001B[90m$text\u001B[0m\n")
     }
 
-    fun run() {
+    private fun pythonBusyForeground(): Boolean = (_running.value && !_background.value) || _pipBusy.value
+
+    private fun exitNote(code: Int): String = when (code) {
+        PythonSession.EXIT_STOPPED -> app.getString(R.string.run_stopped)
+        PythonSession.EXIT_CRASHED -> app.getString(R.string.run_crashed)
+        else -> app.getString(R.string.run_finished, code)
+    }
+
+    fun run(inBackground: Boolean = false) {
         val tab = activeTab ?: return
-        if (_running.value) return
+        if (_running.value) {
+            toast = app.getString(R.string.msg_already_running)
+            return
+        }
         if (_setup.value !is SetupState.Ready) {
             toast = app.getString(R.string.msg_python_not_ready)
             return
         }
+        if (!inBackground && _pipBusy.value) {
+            toast = app.getString(R.string.msg_pip_busy)
+            return
+        }
+        val config = settings.runConfig(tab.file.absolutePath)
+        val extraArgs = RunConfigs.splitArgs(config.args)
+        if (extraArgs == null) {
+            toast = app.getString(R.string.msg_bad_args)
+            return
+        }
+        val env = RunConfigs.parseEnv(config.env)
+        if (env == null) {
+            toast = app.getString(R.string.msg_bad_env)
+            return
+        }
         saveAll()
+        val request = PythonRequest(
+            listOf(tab.file.absolutePath) + extraArgs,
+            tab.file.parentFile ?: root,
+            env,
+        )
         console.clear()
-        note("▶ ${tab.file.name}")
+        note("▶ ${tab.file.name}" + if (inBackground) " · " + app.getString(R.string.run_background_tag) else "")
         _consoleLines.value = console.snapshot()
         consoleVisible = true
+        if (inBackground) startBackground(request, tab.file.name) else startForeground(request)
+    }
+
+    private fun startForeground(request: PythonRequest) {
         _running.value = true
+        _background.value = false
         session = runner.start(
-            PythonRequest(listOf(tab.file.absolutePath), tab.file.parentFile ?: root),
+            request,
             object : RunListener {
                 override fun onOutput(text: String, isError: Boolean) {
                     console.append(text, isError)
@@ -464,13 +588,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
                 }
 
                 override fun onExit(code: Int) {
-                    note(
-                        when (code) {
-                            PythonSession.EXIT_STOPPED -> app.getString(R.string.run_stopped)
-                            PythonSession.EXIT_CRASHED -> app.getString(R.string.run_crashed)
-                            else -> app.getString(R.string.run_finished, code)
-                        },
-                    )
+                    note(exitNote(code))
                     _consoleLines.value = console.snapshot()
                     _running.value = false
                     session = null
@@ -479,11 +597,80 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         )
     }
 
+    private fun startBackground(request: PythonRequest, title: String) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            app.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            askNotifications = true
+        }
+        val dir = try {
+            BackgroundRuns.start(app, request, title)
+        } catch (e: Exception) {
+            toast = app.getString(R.string.msg_bg_failed, e.message ?: e.javaClass.simpleName)
+            null
+        }
+        if (dir == null) {
+            _consoleLines.value = console.snapshot()
+            return
+        }
+        settings.bgDir = dir.absolutePath
+        _running.value = true
+        _background.value = true
+        attachBackground(dir)
+    }
+
+    private fun attachBackground(dir: File) {
+        watcher?.detach()
+        val w = BackgroundWatcher(
+            app, dir, viewModelScope,
+            object : RunListener {
+                override fun onOutput(text: String, isError: Boolean) {
+                    console.append(text, isError)
+                    scheduleConsoleUpdate()
+                }
+
+                override fun onExit(code: Int) {
+                    note(exitNote(code))
+                    _consoleLines.value = console.snapshot()
+                    settings.bgDir = ""
+                    watcher = null
+                    _running.value = false
+                    _background.value = false
+                }
+            },
+        )
+        watcher = w
+        w.start()
+    }
+
+    /** After the app was closed or killed: pick up a background script that is still running (or just finished). */
+    private fun reattachBackground() {
+        if (watcher != null || _running.value) return
+        val path = settings.bgDir
+        if (path.isBlank()) return
+        val dir = File(path)
+        if (!dir.isDirectory) {
+            settings.bgDir = ""
+            return
+        }
+        console.clear()
+        note(app.getString(R.string.bg_reattached))
+        _consoleLines.value = console.snapshot()
+        consoleVisible = true
+        _running.value = true
+        _background.value = true
+        attachBackground(dir)
+    }
+
     fun stop() {
-        session?.stop()
+        if (_background.value) watcher?.stop() else session?.stop()
     }
 
     fun sendInput(text: String) {
+        if (_background.value) {
+            toast = app.getString(R.string.msg_bg_no_input)
+            return
+        }
         val s = session ?: return
         console.appendInput(text + "\n")
         s.writeInput(text + "\n")
@@ -491,6 +678,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     fun closeInput() {
+        if (_background.value) return
         session?.closeInput()
     }
 
@@ -506,6 +694,77 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     // =====================================================================================
+    // Run settings, importing and exporting files
+    // =====================================================================================
+
+    fun runConfig(file: File): RunConfig = settings.runConfig(file.absolutePath)
+
+    /** Validates and stores the arguments and environment for [file]. Returns false (with a message) if invalid. */
+    fun saveRunConfig(file: File, args: String, env: String): Boolean {
+        if (RunConfigs.splitArgs(args) == null) {
+            toast = app.getString(R.string.msg_bad_args)
+            return false
+        }
+        if (RunConfigs.parseEnv(env) == null) {
+            toast = app.getString(R.string.msg_bad_env)
+            return false
+        }
+        settings.setRunConfig(file.absolutePath, RunConfig(args.trim(), env.trim()))
+        return true
+    }
+
+    /** Copies a file picked on the device into the folder that is open in the browser, then opens it. */
+    fun importFromUri(resolver: ContentResolver, uri: Uri) {
+        val dir = currentDir
+        viewModelScope.launch {
+            val imported = withContext(Dispatchers.IO) {
+                runCatching {
+                    val rawName = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                        ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+                    val name = File(rawName ?: "imported.py").name.takeIf { ProjectFiles.isValidName(it) } ?: "imported.py"
+                    val out = java.io.ByteArrayOutputStream()
+                    val buffer = ByteArray(8192)
+                    var total = 0L
+                    resolver.openInputStream(uri)?.use { input ->
+                        while (true) {
+                            val n = input.read(buffer)
+                            if (n < 0) break
+                            total += n
+                            if (total > ProjectFiles.MAX_EDITABLE_BYTES) return@runCatching null
+                            out.write(buffer, 0, n)
+                        }
+                    } ?: return@runCatching null
+                    val bytes = out.toByteArray()
+                    if (bytes.any { it.toInt() == 0 }) return@runCatching null
+                    val unique = ProjectFiles.uniqueName(dir, name.substringBeforeLast('.'), if ('.' in name) name.substringAfterLast('.') else "")
+                    val target = File(dir, unique)
+                    if (ProjectFiles.write(target, String(bytes, Charsets.UTF_8).replace("\r\n", "\n"))) target else null
+                }.getOrNull()
+            }
+            if (imported == null) {
+                toast = app.getString(R.string.msg_import_failed)
+            } else {
+                refreshEntries()
+                openFile(imported)
+                toast = app.getString(R.string.msg_imported, imported.name, dir.name.ifEmpty { "/" })
+            }
+        }
+    }
+
+    /** Writes the text of the open file to a document the user chose. */
+    fun exportTo(resolver: ContentResolver, uri: Uri) {
+        val text = activeTab?.value?.text ?: return
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    resolver.openOutputStream(uri, "wt")?.use { it.write(text.toByteArray(Charsets.UTF_8)) } != null
+                }.getOrDefault(false)
+            }
+            toast = app.getString(if (ok) R.string.msg_exported else R.string.msg_export_failed)
+        }
+    }
+
+    // =====================================================================================
     // pip
     // =====================================================================================
 
@@ -517,6 +776,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     fun pipRefresh() {
         if (_setup.value !is SetupState.Ready || _pipBusy.value) return
+        if (_running.value && !_background.value) return
         viewModelScope.launch {
             _pipBusy.value = true
             val result = runner.capture(PythonRequest(Pip.listArgs, app.filesDir), 60_000)
@@ -527,6 +787,10 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     private fun pipRun(args: List<String>, label: String) {
         if (_pipBusy.value || _setup.value !is SetupState.Ready) return
+        if (_running.value && !_background.value) {
+            toast = app.getString(R.string.msg_pip_busy)
+            return
+        }
         _pipBusy.value = true
         pipConsole.clear()
         pipConsole.append("\u001B[90m$ pip $label\u001B[0m\n")
@@ -656,8 +920,14 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
+        // A background script keeps running on purpose; only stop what belongs to this screen.
+        watcher?.detach()
         session?.stop()
         pipSession?.stop()
         super.onCleared()
+    }
+
+    private companion object {
+        const val AUTOSAVE_TICK_MS = 1500L
     }
 }

@@ -98,7 +98,8 @@ class ProjectAndPipTest {
         val list = Pip.parseList(out)
         assertEquals(2, list.size)
         assertEquals("idna", list[0].name)
-        assertEquals("2.32.3", list.first { it.name == "requests" }.version)
+        assertEquals("requests", list[1].name)
+        assertEquals("2.32.3", list[1].version)
         assertTrue(Pip.parseList("garbage").isEmpty())
     }
 

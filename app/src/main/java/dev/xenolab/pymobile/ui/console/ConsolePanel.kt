@@ -57,6 +57,7 @@ import dev.xenolab.pymobile.ui.theme.LocalCodeColors
 fun ConsolePanel(
     lines: List<ConsoleLine>,
     running: Boolean,
+    canInput: Boolean,
     fontSize: Int,
     full: Boolean,
     onToggleFull: () -> Unit,
@@ -152,7 +153,7 @@ fun ConsolePanel(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val send = {
-                if (running) {
+                if (canInput) {
                     onInput(input)
                     input = ""
                 }
@@ -160,7 +161,7 @@ fun ConsolePanel(
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
-                enabled = running,
+                enabled = canInput,
                 singleLine = true,
                 placeholder = { Text(stringResource(R.string.console_input_hint)) },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send, autoCorrectEnabled = false),
@@ -168,10 +169,10 @@ fun ConsolePanel(
                 textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp),
                 modifier = Modifier.weight(1f),
             )
-            IconButton(onClick = { send() }, enabled = running) {
+            IconButton(onClick = { send() }, enabled = canInput) {
                 Icon(Icons.AutoMirrored.Filled.Send, stringResource(R.string.send))
             }
-            TextButton(onClick = onEof, enabled = running) { Text(stringResource(R.string.eof)) }
+            TextButton(onClick = onEof, enabled = canInput) { Text(stringResource(R.string.eof)) }
         }
     }
 }

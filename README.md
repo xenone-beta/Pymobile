@@ -11,6 +11,10 @@ highlighting and hints, a console with `input()` support and Git — in Material
 - Console as a bottom panel or full screen, ANSI colors, clickable tracebacks, Stop button
 - pip manager (list / install / upgrade / uninstall, `requirements.txt`)
 - Git over HTTPS with an access token (init, commit, log, pull, push, clone)
+- Background run: a script keeps running as a foreground service (own process, output goes to log files,
+  no keyboard input) and the app reconnects to it when you come back
+- Per-file arguments and environment variables, open a file from the device, save a copy, auto-save with
+  draft recovery after a crash
 - English and Russian
 
 ## How it works
@@ -32,7 +36,9 @@ Requires JDK 17, Android SDK 35 and NDK/CMake 3.22.1. The APK contains arm64-v8a
 ## Limitations
 
 - Packages must be pure Python (or have an Android wheel); sdists and native builds are not supported
-- No REPL, debugger or background running
+- No REPL or debugger
+- Background scripts have no stdin; their logs live in app storage and are replaced by the next background run
+- Environment variables for a run are stored unencrypted in app-private storage
 - The Git token is stored in app-private storage, not encrypted, and excluded from backups
 - On Android 10 shared-storage access is limited; the app falls back to its own folder
 - The first release was written without being compiled — expect to fix build errors on the first CI run

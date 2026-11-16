@@ -164,6 +164,7 @@ class EditorLogicTest {
         val modules = Completion.suggest("import ra", 9, emptyList())
         assertNotNull(modules)
         assertTrue("random" in modules!!.items)
+        assertNull(Completion.suggest("import r", 8, emptyList()))
         val src = "counter_value = 1\ncoun"
         val words = Completion.suggest(src, src.length, PyLexer.highlight(src))
         assertNotNull(words)

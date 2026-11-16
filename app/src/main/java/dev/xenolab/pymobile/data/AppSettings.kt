@@ -1,7 +1,9 @@
 package dev.xenolab.pymobile.data
 
 import android.content.Context
+import dev.xenolab.pymobile.python.RunConfig
 import org.json.JSONArray
+import org.json.JSONObject
 
 /** User settings, kept in SharedPreferences. Nothing here is synced or backed up. */
 class AppSettings(context: Context) {
@@ -64,6 +66,28 @@ class AppSettings(context: Context) {
     var activeTab: String
         get() = prefs.getString("active_tab", "") ?: ""
         set(v) = prefs.edit().putString("active_tab", v).apply()
+
+    /** Save a moment after typing stops, instead of only on request. */
+    var autoSave: Boolean
+        get() = prefs.getBoolean("auto_save", true)
+        set(v) = prefs.edit().putBoolean("auto_save", v).apply()
+
+    /** Folder of the background run that is (or was last) active, so the IDE can re-attach to it. */
+    var bgDir: String
+        get() = prefs.getString("bg_dir", "") ?: ""
+        set(v) = prefs.edit().putString("bg_dir", v).apply()
+
+    /** Arguments and environment variables set for a file. Kept in private storage, not encrypted. */
+    fun runConfig(path: String): RunConfig = runCatching {
+        val o = JSONObject(prefs.getString("run_configs", "{}")).optJSONObject(path)
+        RunConfig(o?.optString("args") ?: "", o?.optString("env") ?: "")
+    }.getOrDefault(RunConfig())
+
+    fun setRunConfig(path: String, config: RunConfig) {
+        val root = runCatching { JSONObject(prefs.getString("run_configs", "{}")) }.getOrDefault(JSONObject())
+        if (config.isEmpty) root.remove(path) else root.put(path, JSONObject().put("args", config.args).put("env", config.env))
+        prefs.edit().putString("run_configs", root.toString()).apply()
+    }
 
     companion object {
         const val MIN_FONT = 10
