@@ -137,6 +137,7 @@
     <string name="bg_reattached">Подключение к фоновому скрипту</string>
     <string name="installed_packages">Установленные пакеты (%d)</string>
     <string name="filter_packages">Фильтр</string>
+    <string name="pip_error_title">Не удалось получить список пакетов</string>
     <plurals name="problems">
         <item quantity="one">%d проблема</item>
         <item quantity="few">%d проблемы</item>

@@ -132,13 +132,7 @@ class MainActivity : ComponentActivity() {
                     }
                 },
             ) {
-                EditorScreen(
-                    vm,
-                    onOpenDrawer = { scope.launch { drawer.open() } },
-                    onPip = { screen = Screen.PIP },
-                    onGit = { screen = Screen.GIT },
-                    onSettings = { screen = Screen.SETTINGS },
-                )
+                EditorScreen(vm, onOpenDrawer = { scope.launch { drawer.open() } })
             }
             Screen.PIP -> PipScreen(vm, onBack = { screen = Screen.EDITOR })
             Screen.GIT -> GitScreen(vm, onBack = { screen = Screen.EDITOR }, onSettings = { screen = Screen.SETTINGS })

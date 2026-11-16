@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -60,6 +63,7 @@ import dev.xenolab.pymobile.ui.theme.LocalCodeColors
 fun PipScreen(vm: MainViewModel, onBack: () -> Unit) {
     val packages by vm.pipPackages.collectAsState()
     val busy by vm.pipBusy.collectAsState()
+    val error by vm.pipError.collectAsState()
     val log by vm.pipLines.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var query by remember { mutableStateOf("") }
@@ -140,6 +144,26 @@ fun PipScreen(vm: MainViewModel, onBack: () -> Unit) {
                 HorizontalDivider()
             }
 
+            val problem = error
+            if (problem != null && !busy) {
+                Column(Modifier.fillMaxWidth().padding(16.dp, 8.dp)) {
+                    Text(stringResource(R.string.pip_error_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.error)
+                    Text(
+                        problem.take(1500),
+                        style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 15.sp, color = MaterialTheme.colorScheme.onSurface),
+                        modifier = Modifier.padding(vertical = 6.dp).heightIn(max = 140.dp).verticalScroll(rememberScrollState()),
+                    )
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { vm.pipRefresh() }) { Text(stringResource(R.string.retry)) }
+                        OutlinedButton(onClick = {
+                            val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            cm.setPrimaryClip(android.content.ClipData.newPlainText("Pymobile", problem))
+                        }) { Text(stringResource(R.string.copy_log)) }
+                    }
+                }
+                HorizontalDivider()
+            }
             val all = packages
             if (all == null) {
                 Text(stringResource(R.string.loading), modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)

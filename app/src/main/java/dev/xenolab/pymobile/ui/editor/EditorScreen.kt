@@ -16,11 +16,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -60,16 +58,12 @@ import dev.xenolab.pymobile.ui.theme.LocalCodeColors
 fun EditorScreen(
     vm: MainViewModel,
     onOpenDrawer: () -> Unit,
-    onPip: () -> Unit,
-    onGit: () -> Unit,
-    onSettings: () -> Unit,
 ) {
     val snackbar = remember { SnackbarHostState() }
     val tab = vm.activeTab
     val running by vm.running.collectAsState()
     val background by vm.background.collectAsState()
     val lines by vm.consoleLines.collectAsState()
-    var menu by remember { mutableStateOf(false) }
     var closing by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(vm.toast) {
@@ -104,28 +98,8 @@ fun EditorScreen(
                             Icon(Icons.Filled.PlayArrow, stringResource(R.string.run))
                         }
                     }
-                    IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, null) }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.run_background)) },
-                            enabled = tab?.file?.extension == "py" && !running,
-                            onClick = { menu = false; vm.run(inBackground = true) },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.run_settings)) },
-                            enabled = tab?.file?.extension == "py",
-                            onClick = { menu = false; vm.showRunSettings = true },
-                        )
-                        DropdownMenuItem(text = { Text(stringResource(R.string.save)) }, enabled = tab != null, onClick = { menu = false; vm.saveActive() })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.format_code)) }, enabled = tab?.file?.extension == "py", onClick = { menu = false; vm.formatActive() })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.toggle_comment)) }, enabled = tab != null, onClick = { menu = false; tab?.let { EditorOps.toggleComment(it) } })
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.console)) },
-                            onClick = { menu = false; vm.consoleVisible = !vm.consoleVisible },
-                        )
-                        DropdownMenuItem(text = { Text(stringResource(R.string.packages)) }, onClick = { menu = false; onPip() })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.git)) }, onClick = { menu = false; onGit() })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.settings)) }, onClick = { menu = false; onSettings() })
+                    IconButton(onClick = { vm.saveActive() }, enabled = tab != null) {
+                        Icon(Icons.Filled.Save, stringResource(R.string.save))
                     }
                 },
             )

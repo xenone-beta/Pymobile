@@ -7,7 +7,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -20,7 +24,10 @@ import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.Comment
+import androidx.compose.material.icons.filled.FormatAlignLeft
 import androidx.compose.material.icons.filled.SaveAlt
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Tune
@@ -36,6 +43,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +58,7 @@ import dev.xenolab.pymobile.R
 import dev.xenolab.pymobile.project.ProjectFiles
 import dev.xenolab.pymobile.ui.ConfirmDialog
 import dev.xenolab.pymobile.ui.TextPromptDialog
+import dev.xenolab.pymobile.ui.editor.EditorOps
 import java.io.File
 
 private enum class Prompt { NEW_FILE, NEW_FOLDER, NEW_PROJECT }
@@ -67,7 +76,7 @@ class DrawerActions(
 private fun DrawerEntry(icon: ImageVector, label: String, enabled: Boolean = true, onClick: () -> Unit) {
     val color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
     Row(
-        Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick).padding(horizontal = 20.dp, vertical = 10.dp),
+        Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick).padding(horizontal = 20.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, null, tint = color)
@@ -136,45 +145,53 @@ fun FilesDrawer(vm: MainViewModel, actions: DrawerActions, onOpened: () -> Unit,
         LazyColumn(Modifier.weight(1f)) {
             items(vm.entries, key = { it.absolutePath }) { file ->
                 val isPy = file.extension == "py"
-                ListItem(
-                    headlineContent = { Text(file.name, maxLines = 1) },
-                    leadingContent = {
-                        Icon(
-                            when {
-                                file.isDirectory -> Icons.Filled.Folder
-                                isPy -> Icons.Filled.Code
-                                else -> Icons.AutoMirrored.Filled.InsertDriveFile
-                            },
-                            null,
-                            tint = if (file.isDirectory) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    modifier = Modifier.combinedClickable(
-                        onClick = {
-                            if (file.isDirectory) vm.enter(file) else {
-                                vm.openFile(file)
-                                onOpened()
-                            }
+                Box {
+                    ListItem(
+                        headlineContent = { Text(file.name, maxLines = 1) },
+                        leadingContent = {
+                            Icon(
+                                when {
+                                    file.isDirectory -> Icons.Filled.Folder
+                                    isPy -> Icons.Filled.Code
+                                    else -> Icons.AutoMirrored.Filled.InsertDriveFile
+                                },
+                                null,
+                                tint = if (file.isDirectory) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         },
-                        onLongClick = { menuFor = file },
-                    ),
-                )
-                DropdownMenu(expanded = menuFor == file, onDismissRequest = { menuFor = null }) {
-                    DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, onClick = { renameFor = file; menuFor = null })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.delete)) }, onClick = { deleteFor = file; menuFor = null })
+                        modifier = Modifier.combinedClickable(
+                            onClick = {
+                                if (file.isDirectory) vm.enter(file) else {
+                                    vm.openFile(file)
+                                    onOpened()
+                                }
+                            },
+                            onLongClick = { menuFor = file },
+                        ),
+                    )
+                    DropdownMenu(expanded = menuFor == file, onDismissRequest = { menuFor = null }) {
+                        DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, onClick = { renameFor = file; menuFor = null })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.delete)) }, onClick = { deleteFor = file; menuFor = null })
+                    }
                 }
             }
         }
         HorizontalDivider()
-        val hasTab = vm.activeTab != null
-        val isPython = vm.activeTab?.file?.extension == "py"
-        DrawerEntry(Icons.Filled.FileOpen, stringResource(R.string.open_from_device)) { actions.onPickFile(); onOpened() }
-        DrawerEntry(Icons.Filled.SaveAlt, stringResource(R.string.save_copy), enabled = hasTab) { actions.onExport(); onOpened() }
-        DrawerEntry(Icons.Filled.Terminal, stringResource(R.string.console)) { vm.consoleVisible = !vm.consoleVisible; onOpened() }
-        DrawerEntry(Icons.Filled.Tune, stringResource(R.string.run_settings), enabled = isPython) { vm.showRunSettings = true; onOpened() }
-        DrawerEntry(Icons.Filled.Extension, stringResource(R.string.packages)) { actions.onPip(); onOpened() }
-        DrawerEntry(Icons.Filled.AccountTree, stringResource(R.string.git)) { actions.onGit(); onOpened() }
-        DrawerEntry(Icons.Filled.Settings, stringResource(R.string.settings)) { actions.onSettings(); onOpened() }
+        val running by vm.running.collectAsState()
+        val tab = vm.activeTab
+        val isPython = tab?.file?.extension == "py"
+        Column(Modifier.heightIn(max = 330.dp).verticalScroll(rememberScrollState())) {
+            DrawerEntry(Icons.Filled.FileOpen, stringResource(R.string.open_from_device)) { actions.onPickFile(); onOpened() }
+            DrawerEntry(Icons.Filled.SaveAlt, stringResource(R.string.save_copy), enabled = tab != null) { actions.onExport(); onOpened() }
+            DrawerEntry(Icons.Filled.Schedule, stringResource(R.string.run_background), enabled = isPython && !running) { vm.run(inBackground = true); onOpened() }
+            DrawerEntry(Icons.Filled.Tune, stringResource(R.string.run_settings), enabled = isPython) { vm.showRunSettings = true; onOpened() }
+            DrawerEntry(Icons.Filled.FormatAlignLeft, stringResource(R.string.format_code), enabled = isPython) { vm.formatActive(); onOpened() }
+            DrawerEntry(Icons.Filled.Comment, stringResource(R.string.toggle_comment), enabled = tab != null) { tab?.let { EditorOps.toggleComment(it) }; onOpened() }
+            DrawerEntry(Icons.Filled.Terminal, stringResource(R.string.console)) { vm.consoleVisible = !vm.consoleVisible; onOpened() }
+            DrawerEntry(Icons.Filled.Extension, stringResource(R.string.packages)) { actions.onPip(); onOpened() }
+            DrawerEntry(Icons.Filled.AccountTree, stringResource(R.string.git)) { actions.onGit(); onOpened() }
+            DrawerEntry(Icons.Filled.Settings, stringResource(R.string.settings)) { actions.onSettings(); onOpened() }
+        }
     }
 
     when (prompt) {

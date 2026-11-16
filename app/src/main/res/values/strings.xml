@@ -137,6 +137,7 @@
     <string name="bg_reattached">Reconnected to a background script</string>
     <string name="installed_packages">Installed packages (%d)</string>
     <string name="filter_packages">Filter</string>
+    <string name="pip_error_title">Could not read the package list</string>
     <plurals name="problems">
         <item quantity="one">%d problem</item>
         <item quantity="other">%d problems</item>

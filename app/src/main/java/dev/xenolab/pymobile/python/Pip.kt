@@ -27,7 +27,17 @@ object Pip {
 
     fun uninstallArgs(name: String): List<String> = listOf("-m", "pip", "uninstall", "-y", name)
 
-    val listArgs: List<String> = listOf("-m", "pip", "list", "--format=json", "--disable-pip-version-check")
+    /**
+     * Lists installed distributions straight from the package metadata, so it works even when pip itself is
+     * broken (and ignores PIP_USER, which would hide everything outside the user site).
+     */
+    private const val LIST_SCRIPT =
+        "import importlib.metadata as m, json; " +
+            "print(json.dumps([{'name': d.metadata['Name'], 'version': d.version} for d in m.distributions() if d.metadata['Name']]))"
+
+    val listArgs: List<String> = listOf("-c", LIST_SCRIPT)
+
+    val versionArgs: List<String> = listOf("-m", "pip", "--version")
 
     /** Reads the output of `pip list --format=json`. Extra text before the JSON is tolerated. */
     fun parseList(output: String): List<PipPackage> {
@@ -39,7 +49,7 @@ object Pip {
             List(array.length()) { i ->
                 val o = array.getJSONObject(i)
                 PipPackage(o.optString("name"), o.optString("version"))
-            }.filter { it.name.isNotEmpty() }.sortedBy { it.name.lowercase() }
+            }.filter { it.name.isNotEmpty() }.distinctBy { it.name.lowercase() }.sortedBy { it.name.lowercase() }
         } catch (_: org.json.JSONException) {
             emptyList()
         }

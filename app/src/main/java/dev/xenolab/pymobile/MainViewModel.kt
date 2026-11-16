@@ -122,6 +122,9 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     val pipLines: StateFlow<List<ConsoleLine>> = _pipLines.asStateFlow()
     private val _pipPackages = MutableStateFlow<List<PipPackage>?>(null)
     val pipPackages: StateFlow<List<PipPackage>?> = _pipPackages.asStateFlow()
+    private val _pipError = MutableStateFlow<String?>(null)
+    /** Why the package list could not be read (or why pip does not work), for the user to read and copy. */
+    val pipError: StateFlow<String?> = _pipError.asStateFlow()
     private val _pipBusy = MutableStateFlow(false)
     val pipBusy: StateFlow<Boolean> = _pipBusy.asStateFlow()
     private var pipSession: PythonSession? = null
@@ -780,7 +783,18 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _pipBusy.value = true
             val result = runner.capture(PythonRequest(Pip.listArgs, app.filesDir), 60_000)
-            _pipPackages.value = if (result != null && result.exitCode == 0) Pip.parseList(result.output) else _pipPackages.value
+            val list = if (result != null && result.exitCode == 0) Pip.parseList(result.output) else null
+            var error: String? = null
+            if (list == null) {
+                error = if (result == null) "Timed out after 60 s" else "Exit code ${result.exitCode}\n${result.output.trim()}"
+            } else if (list.none { it.name.equals("pip", ignoreCase = true) }) {
+                val check = runner.capture(PythonRequest(Pip.versionArgs, app.filesDir), 60_000)
+                if (check == null || check.exitCode != 0) {
+                    error = "pip does not work: " + (check?.let { "exit code ${it.exitCode}\n${it.output.trim()}" } ?: "timed out")
+                }
+            }
+            _pipError.value = error
+            _pipPackages.value = list ?: emptyList()
             _pipBusy.value = false
         }
     }
