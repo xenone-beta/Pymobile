@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.xenolab.pymobile.MainViewModel
 import dev.xenolab.pymobile.R
+import dev.xenolab.pymobile.SetupState
 import dev.xenolab.pymobile.ui.ConfirmDialog
 import dev.xenolab.pymobile.ui.theme.LocalCodeColors
 
@@ -97,168 +98,200 @@ fun PipScreen(vm: MainViewModel, onBack: () -> Unit) {
             )
         },
     ) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize()) {
-            if (busy || searching) LinearProgressIndicator(Modifier.fillMaxWidth())
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    label = { Text(stringResource(R.string.pip_hint)) },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, autoCorrectEnabled = false),
-                    keyboardActions = KeyboardActions(onDone = { if (query.isNotBlank()) { vm.pipInstall(query); query = "" } }),
-                    modifier = Modifier.weight(1f),
-                )
-                Button(
-                    onClick = { vm.pipInstall(query); query = "" },
-                    enabled = !busy && query.isNotBlank(),
-                    modifier = Modifier.padding(start = 8.dp),
-                ) { Text(stringResource(R.string.install)) }
-            }
-            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { vm.pypiSearch(query) }, enabled = !searching && query.isNotBlank()) {
-                    Text(stringResource(R.string.pypi_search))
-                }
-                OutlinedButton(onClick = { vm.pipInstallRequirements() }, enabled = !busy) { Text(stringResource(R.string.install_requirements)) }
-                if (busy) OutlinedButton(onClick = { vm.pipCancel() }) { Text(stringResource(R.string.stop)) }
-            }
-            if (pypiProblem != null && detailFor == null) {
-                Text(
-                    pypiProblem.orEmpty(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                )
-            }
-            Text(
-                stringResource(R.string.pip_note),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-            HorizontalDivider()
+        val pyVersion = (vm.setup.collectAsState().value as? SetupState.Ready)?.pythonVersion
+        val logScroll = rememberScrollState()
+        LaunchedEffect(log.size) { logScroll.scrollTo(logScroll.maxValue) }
+        val problem = error
+        val pypiIssue = pypiProblem
+        val all = packages
+        val context = androidx.compose.ui.platform.LocalContext.current
 
-            if (log.isNotEmpty()) {
-                LazyColumn(
-                    state = logState,
-                    modifier = Modifier.fillMaxWidth().height(150.dp).padding(horizontal = 12.dp, vertical = 4.dp),
-                ) {
-                    items(log.size) { i ->
-                        val line = log[i]
+        // One scrolling list for the whole screen: a fixed layout above the package list used to squeeze it to nothing.
+        LazyColumn(Modifier.padding(padding).fillMaxSize()) {
+            item(key = "progress") {
+                if (busy || searching) LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+            item(key = "install") {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        label = { Text(stringResource(R.string.pip_hint)) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, autoCorrectEnabled = false),
+                        keyboardActions = KeyboardActions(onDone = { if (query.isNotBlank()) { vm.pipInstall(query); query = "" } }),
+                        modifier = Modifier.weight(1f),
+                    )
+                    Button(
+                        onClick = { vm.pipInstall(query); query = "" },
+                        enabled = !busy && query.isNotBlank(),
+                        modifier = Modifier.padding(start = 8.dp),
+                    ) { Text(stringResource(R.string.install)) }
+                }
+            }
+            item(key = "buttons") {
+                Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { vm.pypiSearch(query) }, enabled = !searching && query.isNotBlank()) {
+                        Text(stringResource(R.string.pypi_search))
+                    }
+                    OutlinedButton(onClick = { vm.pipInstallRequirements() }, enabled = !busy) { Text(stringResource(R.string.install_requirements)) }
+                    if (busy) OutlinedButton(onClick = { vm.pipCancel() }) { Text(stringResource(R.string.stop)) }
+                }
+            }
+            if (pypiIssue != null && detailFor == null) {
+                item(key = "pypi-problem") {
+                    Text(
+                        pypiIssue,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                }
+            }
+            item(key = "note") {
+                Column {
+                    Text(
+                        stringResource(R.string.pip_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                    if (!pyVersion.isNullOrBlank()) {
                         Text(
-                            buildAnnotatedString {
-                                for (seg in line.segments) {
-                                    val c = when {
-                                        seg.color in 1 until colors.ansi.size -> colors.ansi[seg.color]
-                                        seg.error -> colors.error
-                                        else -> androidx.compose.ui.graphics.Color.Unspecified
-                                    }
-                                    withStyle(SpanStyle(color = c)) { append(seg.text) }
-                                }
-                                if (line.segments.isEmpty()) append(" ")
-                            },
-                            style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp, color = MaterialTheme.colorScheme.onSurface),
+                            "Python $pyVersion",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                         )
                     }
+                    HorizontalDivider(Modifier.padding(top = 8.dp))
                 }
-                HorizontalDivider()
             }
-
-            val problem = error
-            if (problem != null && !busy) {
-                Column(Modifier.fillMaxWidth().padding(16.dp, 8.dp)) {
-                    Text(stringResource(R.string.pip_error_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.error)
-                    Text(
-                        problem.take(1500),
-                        style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 15.sp, color = MaterialTheme.colorScheme.onSurface),
-                        modifier = Modifier.padding(vertical = 6.dp).heightIn(max = 140.dp).verticalScroll(rememberScrollState()),
-                    )
-                    val context = androidx.compose.ui.platform.LocalContext.current
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { vm.pipRefresh() }) { Text(stringResource(R.string.retry)) }
-                        OutlinedButton(onClick = {
-                            val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                            cm.setPrimaryClip(android.content.ClipData.newPlainText("Pymobile", problem))
-                        }) { Text(stringResource(R.string.copy_log)) }
+            if (log.isNotEmpty()) {
+                item(key = "log") {
+                    Column {
+                        Column(
+                            Modifier.fillMaxWidth().height(150.dp).verticalScroll(logScroll).padding(horizontal = 12.dp, vertical = 4.dp),
+                        ) {
+                            for (line in log) {
+                                Text(
+                                    buildAnnotatedString {
+                                        for (seg in line.segments) {
+                                            val c = when {
+                                                seg.color in 1 until colors.ansi.size -> colors.ansi[seg.color]
+                                                seg.error -> colors.error
+                                                else -> androidx.compose.ui.graphics.Color.Unspecified
+                                            }
+                                            withStyle(SpanStyle(color = c)) { append(seg.text) }
+                                        }
+                                        if (line.segments.isEmpty()) append(" ")
+                                    },
+                                    style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp, color = MaterialTheme.colorScheme.onSurface),
+                                )
+                            }
+                        }
+                        HorizontalDivider()
                     }
                 }
-                HorizontalDivider()
             }
-            val all = packages
+            if (problem != null && !busy) {
+                item(key = "problem") {
+                    Column(Modifier.fillMaxWidth().padding(16.dp, 8.dp)) {
+                        Text(stringResource(R.string.pip_error_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.error)
+                        Text(
+                            problem.take(1500),
+                            style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 15.sp, color = MaterialTheme.colorScheme.onSurface),
+                            modifier = Modifier.padding(vertical = 6.dp),
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { vm.pipRefresh() }) { Text(stringResource(R.string.retry)) }
+                            OutlinedButton(onClick = {
+                                val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                cm.setPrimaryClip(android.content.ClipData.newPlainText("Pymobile", problem))
+                            }) { Text(stringResource(R.string.copy_log)) }
+                        }
+                        HorizontalDivider(Modifier.padding(top = 8.dp))
+                    }
+                }
+            }
             if (all == null) {
-                Text(stringResource(R.string.loading), modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                item(key = "loading") {
+                    Text(stringResource(R.string.loading), modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             } else {
                 val list = if (filter.isBlank()) all else all.filter { it.name.contains(filter.trim(), ignoreCase = true) }
-                Text(
-                    stringResource(R.string.installed_packages, all.size),
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.padding(16.dp, 12.dp, 16.dp, 0.dp),
-                )
-                if (all.size > 6) {
-                    OutlinedTextField(
-                        value = filter,
-                        onValueChange = { filter = it },
-                        label = { Text(stringResource(R.string.filter_packages)) },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                item(key = "installed-title") {
+                    Text(
+                        stringResource(R.string.installed_packages, all.size),
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(16.dp, 12.dp, 16.dp, 0.dp),
                     )
                 }
-                LazyColumn(Modifier.weight(1f)) {
-                    val hits = results
-                    if (hits != null) {
-                        item(key = "pypi-header") {
-                            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    stringResource(R.string.pypi_results, hits.size),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                TextButton(onClick = { vm.pypiClear() }) { Text(stringResource(R.string.close)) }
-                            }
+                if (all.size > 6) {
+                    item(key = "filter") {
+                        OutlinedTextField(
+                            value = filter,
+                            onValueChange = { filter = it },
+                            label = { Text(stringResource(R.string.filter_packages)) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+                val hits = results
+                if (hits != null) {
+                    item(key = "pypi-header") {
+                        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                stringResource(R.string.pypi_results, hits.size),
+                                style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = { vm.pypiClear() }) { Text(stringResource(R.string.close)) }
                         }
-                        if (hits.isEmpty()) {
-                            item(key = "pypi-empty") {
-                                Text(
-                                    stringResource(R.string.pypi_nothing),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                                )
-                            }
-                        }
-                        items(hits, key = { "pypi-" + it.name }) { hit ->
-                            ListItem(
-                                headlineContent = { Text(hit.name) },
-                                supportingContent = {
-                                    Text(
-                                        listOf(hit.version, hit.summary).filter { it.isNotEmpty() }.joinToString(" · "),
-                                        maxLines = 2,
-                                    )
-                                },
-                                modifier = Modifier.clickable {
-                                    detailFor = hit.name
-                                    vm.pypiOpen(hit.name)
-                                },
+                    }
+                    if (hits.isEmpty()) {
+                        item(key = "pypi-empty") {
+                            Text(
+                                stringResource(R.string.pypi_nothing),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                             )
                         }
-                        item(key = "pypi-divider") { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
                     }
-                    items(list, key = { it.name }) { p ->
+                    items(hits, key = { "pypi-" + it.name }) { hit ->
                         ListItem(
-                            headlineContent = { Text(p.name) },
-                            supportingContent = { Text(p.version) },
-                            trailingContent = {
-                                Row {
-                                    IconButton(onClick = { vm.pipInstall(p.name, upgrade = true) }, enabled = !busy) {
-                                        Icon(Icons.Filled.SystemUpdateAlt, stringResource(R.string.upgrade))
-                                    }
-                                    IconButton(onClick = { removing = p.name }, enabled = !busy && p.name.lowercase() != "pip") {
-                                        Icon(Icons.Filled.Delete, stringResource(R.string.uninstall))
-                                    }
-                                }
+                            headlineContent = { Text(hit.name) },
+                            supportingContent = {
+                                Text(
+                                    listOf(hit.version, hit.summary).filter { it.isNotEmpty() }.joinToString(" · "),
+                                    maxLines = 2,
+                                )
+                            },
+                            modifier = Modifier.clickable {
+                                detailFor = hit.name
+                                vm.pypiOpen(hit.name)
                             },
                         )
                     }
+                    item(key = "pypi-divider") { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
+                }
+                items(list, key = { it.name }) { p ->
+                    ListItem(
+                        headlineContent = { Text(p.name) },
+                        supportingContent = { Text(p.version) },
+                        trailingContent = {
+                            Row {
+                                IconButton(onClick = { vm.pipInstall(p.name, upgrade = true) }, enabled = !busy) {
+                                    Icon(Icons.Filled.SystemUpdateAlt, stringResource(R.string.upgrade))
+                                }
+                                IconButton(onClick = { removing = p.name }, enabled = !busy && p.name.lowercase() != "pip") {
+                                    Icon(Icons.Filled.Delete, stringResource(R.string.uninstall))
+                                }
+                            }
+                        },
+                    )
                 }
             }
         }

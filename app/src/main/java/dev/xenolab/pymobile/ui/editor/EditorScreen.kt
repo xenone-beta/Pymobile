@@ -22,6 +22,13 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Button
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -91,11 +98,31 @@ fun EditorScreen(
                     IconButton(onClick = onOpenDrawer) { Icon(Icons.Filled.Menu, stringResource(R.string.files)) }
                 },
                 actions = {
+                    val canRun = tab != null && tab.file.extension == "py"
                     if (running) {
-                        IconButton(onClick = { vm.stop() }) { Icon(Icons.Filled.Stop, stringResource(R.string.stop), tint = MaterialTheme.colorScheme.error) }
+                        FilledTonalButton(
+                            onClick = { vm.stop() },
+                            shape = CircleShape,
+                            contentPadding = PaddingValues(start = 12.dp, end = 16.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                            ),
+                            modifier = Modifier.height(38.dp),
+                        ) {
+                            Icon(Icons.Filled.Stop, null, Modifier.size(20.dp))
+                            Text(stringResource(R.string.stop), Modifier.padding(start = 6.dp))
+                        }
                     } else {
-                        IconButton(onClick = { vm.run() }, enabled = tab != null && tab.file.extension == "py") {
-                            Icon(Icons.Filled.PlayArrow, stringResource(R.string.run))
+                        Button(
+                            onClick = { vm.run() },
+                            enabled = canRun,
+                            shape = CircleShape,
+                            contentPadding = PaddingValues(start = 12.dp, end = 16.dp),
+                            modifier = Modifier.height(38.dp),
+                        ) {
+                            Icon(Icons.Filled.PlayArrow, null, Modifier.size(22.dp))
+                            Text(stringResource(R.string.run), Modifier.padding(start = 4.dp))
                         }
                     }
                     IconButton(onClick = { vm.saveActive() }, enabled = tab != null) {
@@ -139,7 +166,7 @@ fun EditorScreen(
                             EditorOps.apply(tab, Completion.apply(v.text, v.selection.start, suggestion, choice))
                         })
                     }
-                    ExtraKeys(tab, vm.autoPair)
+                    ExtraKeys(tab, vm.autoPair, onSnippets = { vm.showSnippets = true })
                 }
             }
             if (vm.consoleVisible) {
@@ -160,6 +187,10 @@ fun EditorScreen(
                 )
             }
         }
+    }
+
+    if (vm.showSnippets && tab != null) {
+        SnippetsDialog(vm, tab, onDismiss = { vm.showSnippets = false })
     }
 
     if (vm.showRunSettings && tab != null) {

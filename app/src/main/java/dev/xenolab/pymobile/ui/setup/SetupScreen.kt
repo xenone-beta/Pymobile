@@ -3,7 +3,19 @@ package dev.xenolab.pymobile.ui.setup
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,16 +47,17 @@ fun SetupScreen(state: SetupState, onRetry: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         when (state) {
-            is SetupState.Checking, is SetupState.Ready -> CircularProgressIndicator()
-            is SetupState.Installing -> {
-                Text(stringResource(R.string.setup_title), style = MaterialTheme.typography.headlineSmall)
+            is SetupState.Checking, is SetupState.Ready -> Brand { CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 3.dp) }
+            is SetupState.Installing -> Brand {
+                Text(stringResource(R.string.setup_title), style = MaterialTheme.typography.titleMedium)
                 Text(
                     stringResource(R.string.setup_message),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
                     modifier = Modifier.padding(vertical = 12.dp),
                 )
-                LinearProgressIndicator(progress = { state.progress }, modifier = Modifier.fillMaxWidth())
+                LinearProgressIndicator(progress = { state.progress }, modifier = Modifier.fillMaxWidth().clip(CircleShape))
             }
             is SetupState.Failed -> {
                 val context = LocalContext.current
@@ -66,4 +79,24 @@ fun SetupScreen(state: SetupState, onRetry: () -> Unit) {
             }
         }
     }
+}
+
+/** The app icon, its name and whatever the loading step puts below. Looks like the system splash, then carries on. */
+@Composable
+private fun Brand(content: @Composable () -> Unit) {
+    Box(
+        Modifier.size(112.dp).clip(RoundedCornerShape(30.dp)).background(colorResource(R.color.ic_launcher_background)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(painterResource(R.drawable.ic_launcher_foreground), null, Modifier.size(112.dp))
+    }
+    Spacer(Modifier.height(18.dp))
+    Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)
+    Text(
+        stringResource(R.string.app_tagline),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(28.dp))
+    content()
 }

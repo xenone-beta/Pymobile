@@ -27,11 +27,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.app.ActivityCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import dev.xenolab.pymobile.ui.editor.EditorScreen
 import dev.xenolab.pymobile.ui.files.DrawerActions
 import dev.xenolab.pymobile.ui.files.FilesDrawer
 import dev.xenolab.pymobile.ui.git.GitScreen
 import dev.xenolab.pymobile.ui.pip.PipScreen
+import dev.xenolab.pymobile.ui.search.SearchScreen
 import dev.xenolab.pymobile.ui.settings.SettingsScreen
 import dev.xenolab.pymobile.ui.setup.SetupScreen
 import dev.xenolab.pymobile.ui.themes.ThemesScreen
@@ -41,7 +43,7 @@ import dev.xenolab.pymobile.theme.ThemeStore
 import dev.xenolab.pymobile.ui.theme.PymobileTheme
 import kotlinx.coroutines.launch
 
-private enum class Screen { EDITOR, PIP, GIT, SETTINGS, THEMES }
+private enum class Screen { EDITOR, PIP, GIT, SETTINGS, THEMES, SEARCH }
 
 class MainActivity : ComponentActivity() {
     private val vm: MainViewModel by viewModels()
@@ -69,6 +71,12 @@ class MainActivity : ComponentActivity() {
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splash = installSplashScreen()
+        val started = android.os.SystemClock.elapsedRealtime()
+        // Hold the system splash while the interpreter is checked, but never for long: the app has its own loading screen.
+        splash.setKeepOnScreenCondition {
+            vm.setup.value is SetupState.Checking && android.os.SystemClock.elapsedRealtime() - started < 1200
+        }
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         if (savedInstanceState == null) handleIntent(intent)
@@ -144,6 +152,7 @@ class MainActivity : ComponentActivity() {
                 onPip = { screen = Screen.PIP },
                 onGit = { screen = Screen.GIT },
                 onSettings = { screen = Screen.SETTINGS },
+                onSearch = { screen = Screen.SEARCH },
             )
         }
 
@@ -171,6 +180,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 EditorScreen(vm, onOpenDrawer = { scope.launch { drawer.open() } })
             }
+            Screen.SEARCH -> SearchScreen(vm, onBack = { screen = Screen.EDITOR }, onOpened = { screen = Screen.EDITOR })
             Screen.PIP -> PipScreen(vm, onBack = { screen = Screen.EDITOR })
             Screen.GIT -> GitScreen(vm, onBack = { screen = Screen.EDITOR }, onSettings = { screen = Screen.SETTINGS })
             Screen.SETTINGS -> SettingsScreen(

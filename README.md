@@ -18,6 +18,7 @@ highlighting and hints, a console with `input()` support and Git — in Material
 - Editor themes: seven built-in colour schemes, your own themes edited in the app, and `.pmt` files
   (a small JSON document: name, dark/light and the colours) that you can import and export
 - "Open with Pymobile" for `.py` and `.pmt` files from other apps; PyPI search with version picker
+- Project search and replace (regex, whole word, definitions only), project templates (script, CLI, Telegram bot, web server, Flask, tests), built-in and own code snippets
 - English and Russian
 
 ## How it works

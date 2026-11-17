@@ -4,6 +4,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import dev.xenolab.pymobile.editor.EditActions
 import dev.xenolab.pymobile.editor.EditState
+import dev.xenolab.pymobile.editor.Snippets
 import dev.xenolab.pymobile.editor.UndoStack
 import dev.xenolab.pymobile.project.EditorTab
 
@@ -96,6 +97,17 @@ object EditorOps {
         val v = tab.value
         val s = tab.undo.redo(snap(v)) ?: return
         tab.value = TextFieldValue(s.text, TextRange(s.start, s.end))
+    }
+
+    /** Inserts a snippet at the caret, aligned with the current line; the caret lands on its cursor marker. */
+    fun insertSnippet(tab: EditorTab, body: String) {
+        val v = tab.value
+        val lo = v.selection.min
+        val lineStart = v.text.lastIndexOf('\n', lo - 1) + 1
+        val indent = v.text.substring(lineStart, lo).takeWhile { it == ' ' || it == '\t' }
+        val (text, caret) = Snippets.render(body, indent)
+        val newText = v.text.substring(0, lo) + text + v.text.substring(v.selection.max)
+        apply(tab, EditState(newText, lo + caret, lo + caret))
     }
 
     fun moveCaretToLine(tab: EditorTab, line: Int) {

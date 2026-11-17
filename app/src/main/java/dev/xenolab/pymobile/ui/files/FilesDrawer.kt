@@ -22,6 +22,8 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.DataObject
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Comment
@@ -70,6 +72,7 @@ class DrawerActions(
     val onPip: () -> Unit,
     val onGit: () -> Unit,
     val onSettings: () -> Unit,
+    val onSearch: () -> Unit,
 )
 
 @Composable
@@ -187,6 +190,8 @@ fun FilesDrawer(vm: MainViewModel, actions: DrawerActions, onOpened: () -> Unit,
             DrawerEntry(Icons.Filled.Tune, stringResource(R.string.run_settings), enabled = isPython) { vm.showRunSettings = true; onOpened() }
             DrawerEntry(Icons.Filled.FormatAlignLeft, stringResource(R.string.format_code), enabled = isPython) { vm.formatActive(); onOpened() }
             DrawerEntry(Icons.Filled.Comment, stringResource(R.string.toggle_comment), enabled = tab != null) { tab?.let { EditorOps.toggleComment(it) }; onOpened() }
+            DrawerEntry(Icons.Filled.Search, stringResource(R.string.search_project)) { actions.onSearch(); onOpened() }
+            DrawerEntry(Icons.Filled.DataObject, stringResource(R.string.snippets), enabled = tab != null) { vm.showSnippets = true; onOpened() }
             DrawerEntry(Icons.Filled.Terminal, stringResource(R.string.console)) { vm.consoleVisible = !vm.consoleVisible; onOpened() }
             DrawerEntry(Icons.Filled.Extension, stringResource(R.string.packages)) { actions.onPip(); onOpened() }
             DrawerEntry(Icons.Filled.AccountTree, stringResource(R.string.git)) { actions.onGit(); onOpened() }
@@ -197,7 +202,7 @@ fun FilesDrawer(vm: MainViewModel, actions: DrawerActions, onOpened: () -> Unit,
     when (prompt) {
         Prompt.NEW_FILE -> TextPromptDialog(stringResource(R.string.new_file), "", stringResource(R.string.name_hint_file), onConfirm = { vm.newFile(it) }, onDismiss = { prompt = null })
         Prompt.NEW_FOLDER -> TextPromptDialog(stringResource(R.string.new_folder), "", stringResource(R.string.name_hint_folder), onConfirm = { vm.newFolder(it) }, onDismiss = { prompt = null })
-        Prompt.NEW_PROJECT -> TextPromptDialog(stringResource(R.string.new_project), "", stringResource(R.string.name_hint_project), onConfirm = { vm.newProject(it) }, onDismiss = { prompt = null })
+        Prompt.NEW_PROJECT -> NewProjectDialog(onCreate = { name, template -> vm.newProject(name, template) }, onDismiss = { prompt = null })
         null -> Unit
     }
     renameFor?.let { f ->

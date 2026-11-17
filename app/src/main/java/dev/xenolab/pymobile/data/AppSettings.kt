@@ -94,6 +94,11 @@ class AppSettings(context: Context) {
         prefs.edit().putString("run_configs", root.toString()).apply()
     }
 
+    /** The user's own snippets as JSON (see Snippets.toJson). */
+    var userSnippets: String
+        get() = prefs.getString("user_snippets", "[]") ?: "[]"
+        set(v) = prefs.edit().putString("user_snippets", v).apply()
+
     companion object {
         const val MIN_FONT = 10
         const val MAX_FONT = 24

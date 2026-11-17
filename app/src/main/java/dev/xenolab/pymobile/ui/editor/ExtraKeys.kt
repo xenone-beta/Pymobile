@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.DataObject
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardTab
@@ -54,7 +55,7 @@ private fun IconKey(icon: ImageVector, description: String, onClick: () -> Unit)
 }
 
 @Composable
-fun ExtraKeys(tab: EditorTab, autoPair: Boolean, modifier: Modifier = Modifier) {
+fun ExtraKeys(tab: EditorTab, autoPair: Boolean, onSnippets: () -> Unit = {}, modifier: Modifier = Modifier) {
     Row(
         modifier
             .fillMaxWidth()
@@ -68,6 +69,7 @@ fun ExtraKeys(tab: EditorTab, autoPair: Boolean, modifier: Modifier = Modifier) 
         IconKey(Icons.AutoMirrored.Filled.KeyboardArrowRight, "→") { EditorOps.right(tab) }
         IconKey(Icons.Filled.KeyboardArrowUp, "↑") { EditorOps.up(tab) }
         IconKey(Icons.Filled.KeyboardArrowDown, "↓") { EditorOps.down(tab) }
+        IconKey(Icons.Filled.DataObject, "Snippets") { onSnippets() }
         IconKey(Icons.AutoMirrored.Filled.Undo, "Undo") { EditorOps.undo(tab) }
         IconKey(Icons.AutoMirrored.Filled.Redo, "Redo") { EditorOps.redo(tab) }
         for (ch in SYMBOLS) {

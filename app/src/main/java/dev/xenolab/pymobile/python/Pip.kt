@@ -1,6 +1,7 @@
 package dev.xenolab.pymobile.python
 
 import org.json.JSONArray
+import java.io.File
 
 data class PipPackage(val name: String, val version: String)
 
@@ -38,6 +39,40 @@ object Pip {
     val listArgs: List<String> = listOf("-c", LIST_SCRIPT)
 
     val versionArgs: List<String> = listOf("-m", "pip", "--version")
+
+    /**
+     * Lists what is installed by reading the `*.dist-info` folders of the given site-packages directories.
+     * No interpreter is needed, so the list works even when Python itself cannot start.
+     */
+    fun scanInstalled(dirs: List<File>): List<PipPackage> {
+        val found = ArrayList<PipPackage>()
+        for (dir in dirs) {
+            val children = dir.listFiles() ?: continue
+            for (child in children) {
+                if (!child.isDirectory || !child.name.endsWith(".dist-info")) continue
+                val parsed = parseDistInfoName(child.name.removeSuffix(".dist-info")) ?: continue
+                val metaName = readMetadataName(File(child, "METADATA"))
+                found += PipPackage(metaName ?: parsed.first, parsed.second)
+            }
+        }
+        return found.filter { it.name.isNotEmpty() }.distinctBy { it.name.lowercase().replace('_', '-') }
+            .sortedBy { it.name.lowercase() }
+    }
+
+    /** `Flask_Cors-4.0.1` gives ("Flask_Cors", "4.0.1"). */
+    fun parseDistInfoName(base: String): Pair<String, String>? {
+        val i = base.lastIndexOf('-')
+        if (i <= 0 || i == base.length - 1) return null
+        return base.substring(0, i) to base.substring(i + 1)
+    }
+
+    private fun readMetadataName(file: File): String? = try {
+        if (!file.isFile) null else file.bufferedReader(Charsets.UTF_8).useLines { lines ->
+            lines.take(40).firstOrNull { it.startsWith("Name:") }?.substringAfter(':')?.trim()?.takeIf { it.isNotEmpty() }
+        }
+    } catch (_: java.io.IOException) {
+        null
+    }
 
     /** Reads the output of `pip list --format=json`. Extra text before the JSON is tolerated. */
     fun parseList(output: String): List<PipPackage> {

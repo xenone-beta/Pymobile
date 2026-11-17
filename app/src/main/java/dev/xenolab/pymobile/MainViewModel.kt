@@ -20,6 +20,8 @@ import dev.xenolab.pymobile.data.AppSettings
 import dev.xenolab.pymobile.editor.ConsoleBuffer
 import dev.xenolab.pymobile.editor.ConsoleLine
 import dev.xenolab.pymobile.editor.Formatter
+import dev.xenolab.pymobile.editor.Snippet
+import dev.xenolab.pymobile.editor.Snippets
 import dev.xenolab.pymobile.editor.UndoStack
 import dev.xenolab.pymobile.git.GitCommitInfo
 import dev.xenolab.pymobile.git.GitCredentials
@@ -30,6 +32,11 @@ import dev.xenolab.pymobile.project.EditorTab
 import dev.xenolab.pymobile.project.FileError
 import dev.xenolab.pymobile.project.FileOp
 import dev.xenolab.pymobile.project.ProjectFiles
+import dev.xenolab.pymobile.project.ProjectSearch
+import dev.xenolab.pymobile.project.SearchOptions
+import dev.xenolab.pymobile.project.SearchResult
+import dev.xenolab.pymobile.project.Template
+import dev.xenolab.pymobile.project.Templates
 import dev.xenolab.pymobile.pypi.PackageDetail
 import dev.xenolab.pymobile.pypi.PyPi
 import dev.xenolab.pymobile.pypi.SearchHit
@@ -52,6 +59,7 @@ import dev.xenolab.pymobile.python.PythonSession
 import dev.xenolab.pymobile.python.RunListener
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -373,11 +381,80 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         report(ProjectFiles.create(currentDir, name, folder = true)) { refreshEntries() }
     }
 
-    fun newProject(name: String) {
-        val op = ProjectFiles.createProject(currentDir, name)
+    fun newProject(name: String, template: Template = Templates.byId("script")) {
+        val op = Templates.create(currentDir, name, template)
         report(op) {
             refreshEntries()
-            op.file?.let { openFile(File(it, "main.py")) }
+            op.file?.let { openFile(File(it, template.files.first().first)) }
+        }
+    }
+
+    // ---- snippets ----
+    var showSnippets by mutableStateOf(false)
+    var snippets by mutableStateOf(Snippets.fromJson(settings.userSnippets)); private set
+
+    fun addSnippet(snippet: Snippet) {
+        snippets = snippets.filterNot { it.trigger == snippet.trigger && it.title == snippet.title } + snippet.copy(builtin = false)
+        settings.userSnippets = Snippets.toJson(snippets)
+    }
+
+    fun removeSnippet(snippet: Snippet) {
+        snippets = snippets - snippet
+        settings.userSnippets = Snippets.toJson(snippets)
+    }
+
+    // ---- search in the project ----
+    private val _searchResult = MutableStateFlow<SearchResult?>(null)
+    val searchResult: StateFlow<SearchResult?> = _searchResult.asStateFlow()
+    private val _searchBusy = MutableStateFlow(false)
+    val searchBusy: StateFlow<Boolean> = _searchBusy.asStateFlow()
+    private var searchJob: Job? = null
+
+    fun search(options: SearchOptions) {
+        searchJob?.cancel()
+        if (options.query.isEmpty()) {
+            _searchResult.value = null
+            _searchBusy.value = false
+            return
+        }
+        flushPending()
+        tabs.filter { it.dirty }.forEach { save(it) }
+        searchJob = viewModelScope.launch {
+            _searchBusy.value = true
+            _searchResult.value = withContext(Dispatchers.IO) { ProjectSearch.search(currentDir, options) }
+            _searchBusy.value = false
+        }
+    }
+
+    fun clearSearch() {
+        searchJob?.cancel()
+        _searchResult.value = null
+        _searchBusy.value = false
+    }
+
+    /** Replaces in the files that matched; open tabs are saved first and reloaded afterwards. */
+    fun replaceAll(options: SearchOptions, replacement: String) {
+        val files = _searchResult.value?.matches?.map { it.file }?.distinct() ?: return
+        flushPending()
+        tabs.filter { it.dirty }.forEach { save(it) }
+        viewModelScope.launch {
+            val count = try {
+                withContext(Dispatchers.IO) { ProjectSearch.replaceAll(currentDir, options, replacement, files) }
+            } catch (_: Exception) {
+                -1
+            }
+            if (count < 0) {
+                toast = app.getString(R.string.msg_failed)
+                return@launch
+            }
+            for (tab in tabs) {
+                if (tab.file !in files) continue
+                val text = withContext(Dispatchers.IO) { runCatching { ProjectFiles.read(tab.file) }.getOrNull() } ?: continue
+                tab.value = TextFieldValue(text, TextRange(tab.value.selection.min.coerceAtMost(text.length)))
+                tab.saved = text
+            }
+            toast = app.getString(R.string.replace_done, count)
+            search(options)
         }
     }
 
@@ -920,22 +997,27 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     fun pipRefresh() {
         if (_setup.value !is SetupState.Ready || _pipBusy.value) return
-        if (_running.value && !_background.value) return
         viewModelScope.launch {
+            // First the folders on disk: instant and independent of the interpreter.
+            val scanned = withContext(Dispatchers.IO) { Pip.scanInstalled(listOf(paths.userSite, File(paths.home, "lib/python${BuildConfig.PYTHON_MINOR}/site-packages"))) }
+            _pipPackages.value = scanned
+            _pipError.value = null
+            if (_running.value && !_background.value) return@launch
             _pipBusy.value = true
-            val result = runner.capture(PythonRequest(Pip.listArgs, app.filesDir), 60_000)
-            val list = if (result != null && result.exitCode == 0) Pip.parseList(result.output) else null
-            var error: String? = null
-            if (list == null) {
-                error = if (result == null) "Timed out after 60 s" else "Exit code ${result.exitCode}\n${result.output.trim()}"
-            } else if (list.none { it.name.equals("pip", ignoreCase = true) }) {
+            if (scanned.none { it.name.equals("pip", ignoreCase = true) }) {
+                // pip is not where it should be: find out why, so the screen can say it.
                 val check = runner.capture(PythonRequest(Pip.versionArgs, app.filesDir), 60_000)
                 if (check == null || check.exitCode != 0) {
-                    error = "pip does not work: " + (check?.let { "exit code ${it.exitCode}\n${it.output.trim()}" } ?: "timed out")
+                    _pipError.value = "pip does not work: " + (check?.let { "exit code ${it.exitCode}\n${it.output.trim()}" } ?: "timed out")
+                }
+            } else {
+                // Also ask the interpreter; it may know packages that live elsewhere on its path.
+                val result = runner.capture(PythonRequest(Pip.listArgs, app.filesDir), 60_000)
+                val viaPython = if (result != null && result.exitCode == 0) Pip.parseList(result.output) else emptyList()
+                if (viaPython.isNotEmpty()) {
+                    _pipPackages.value = (scanned + viaPython).distinctBy { it.name.lowercase().replace('_', '-') }.sortedBy { it.name.lowercase() }
                 }
             }
-            _pipError.value = error
-            _pipPackages.value = list ?: emptyList()
             _pipBusy.value = false
         }
     }
